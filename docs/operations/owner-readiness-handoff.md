@@ -56,16 +56,19 @@ python -m turtle_value_engine evolution readiness-summary \
 | `informational_blockers` | 信息性阻塞项（如 `OWNER_DECISION_REQUIRED`、审计政策发现、计划阻塞项并集） |
 | `next_steps_zh` | 针对当前状态的下一步提示（Phase 7-C4-C-R1 起遵守下述"提示安全约定"） |
 
-### 提示安全约定（Phase 7-C4-C-R1）
+### 提示安全约定（Phase 7-C4-C-R1 起，Phase 7-C4-C-R2 加固）
 
 `next_steps_zh` 中的命令提示按以下规则生成，避免误导或 Shell 意外：
 
 - **只有"完整已知输入的只读命令"才会以可复制命令形式出现**，且置于该条
-  提示最后一个全角冒号"："之后、整条结尾；命令由参数向量经
+  提示最后一个全角冒号"："之后、**直至结尾的全部文本**：命令之后不再有
+  句号、空白或其他任何装饰字符（R2 加固），直接整段复制即可执行，无需
+  手工删除任何字符；命令由参数向量经
   `shlex.join` 精确引用拼出，**绝不含裸 `<占位符>`**（POSIX Shell 会把
   `<决策记录>` 解析成输入/输出重定向，历史上曾意外创建名为
   `--policy-exception` 之类的文件并破坏 argv）。路径含空格、引号、
-  分号、`$`、反引号或重定向字符时会被安全引用并逐字节保留。
+  分号、`$`、反引号、重定向字符或中文时会被安全引用并逐字节保留；
+  文件名本身以中文句号"。"结尾时，该句号属于文件名、原样保留在引号内。
 - **重放保真**：标注为"重新运行本命令"的 `readiness-summary` 重试命令会
   原样携带本次显式提供的全部输入（`--decision-record`/`--revocation`/
   `--policy-exception`/`--trust-root`/`--authority-evidence`/
@@ -73,8 +76,10 @@ python -m turtle_value_engine evolution readiness-summary \
   `--activation-root`，可重复项保持顺序与次数）。直接复制粘贴即可复现
   同一观察（含已验证授权的 `PREVIEW_READY`），不会退回起点视图。
 - **写文件命令绝不伪装成只读**：`decision-dossier` 与 `plan-activation`
-  都必须显式 `--output` 并会写入文件，它们只以文字说明出现（明确披露
-  写入、要求你自选输出路径），永不以可复制命令形式出现。
+  都必须显式 `--output` 并会写入你显式选择的文件（前者为 Markdown 决策
+  材料，后者为计划文件——两者都是可选的写文件操作，旅程中不止一步会
+  写文件），它们只以文字说明出现（明确披露写入、要求你自选输出路径），
+  永不以可复制命令形式出现。
 - **不完整的命令不生成**：例如未提供 `--activation-root` 时不会给出
   号称可直接运行的 `activate-profile` 预览命令（该参数是解析器必填），
   而是文字说明需要补齐什么。
@@ -104,7 +109,8 @@ python -m turtle_value_engine evolution readiness-summary \
 
 ```text
 readiness-summary（起点：OWNER_DECISION_REQUIRED）
-  -> decision-dossier（唯一写文件步骤：--output 由你指定；以文字说明给出）
+  -> decision-dossier（写文件步骤之一：写入你显式选择的 Markdown，
+     --output 由你指定；以文字说明给出）
   -> 所有者人工 ACCEPT/REJECT + 签名 + record-decision
      （见 owner-provenance-walkthrough.md；绝不把私钥放进仓库/聊天/CI）
   -> readiness-summary（带 --decision-record/--trust-root/--authority-evidence；
@@ -115,6 +121,11 @@ readiness-summary（起点：OWNER_DECISION_REQUIRED）
   -> 仅在你显式决定时：逐字执行预览输出的 apply_command_hint
   -> activation-status / readiness-summary 复核（ALREADY_APPLIED 等）
   -> rollback-activation（如需恢复；字节精确）
+
+旅程中会写文件的可选步骤不止一个：decision-dossier --output 写入决策
+材料，plan-activation --output 也会写入计划文件；两者都要求你显式选择
+输出路径，其余旅程命令（readiness-summary / activation-status /
+activate-profile 预览）均为零写入。
 ```
 
 每一步的完整语义、失败码与中断恢复见
@@ -142,4 +153,11 @@ readiness-summary（起点：OWNER_DECISION_REQUIRED）
   含空格/引号/分号/`$`/反引号/重定向符路径）、重试命令的完整上下文
   保真（可重复项顺序与次数、重放同一 summary_id 与已验证授权状态）、
   写文件命令（`--output`）永不以可复制只读命令出现、缺 `--activation-root`
-  时不出预览命令，以及 summary_id 存储问题集碰撞的诊断性记录。
+  时不出预览命令，以及 summary_id 存储问题集碰撞的诊断性记录；
+  `tests/test_owner_readiness_summary_r2_probes.py`（13 项，C4-C-R2）
+  以**原样逐字提取**（最后一个全角冒号之后的完整文本，不做任何
+  rstrip/句号剥离）钉死：可复制命令尾部粘贴到 no-op stub 的 argv 与
+  预期逐项一致（含真实以"。"结尾的文件名）、全部 11 种 journey_state
+  的命令完整且安全、字面重试命令经真实 CLI 重放同一
+  summary_id/content_sha256，以及两个写文件命令的写入披露不再声称
+  "唯一写文件步骤"。

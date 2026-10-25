@@ -38,8 +38,8 @@ from tests.test_activation_execution import (
     BOUNDARY_PATH,
     MANIFEST_PATH,
     TARGET_PROFILE_PATH,
-    _Env,
     _cli,
+    _Env,
 )
 from tests.test_activation_status import (
     _assert_zero_writes,
@@ -230,6 +230,7 @@ def _expected_preview_argv(
     policy_exceptions: tuple[Path | str, ...] = (),
     trust_root: Path | str | None = None,
     authority_evidence: Path | str | None = None,
+    boundary_input: Path | str | None = None,
 ) -> list[str]:
     argv = [
         "tve",
@@ -242,6 +243,8 @@ def _expected_preview_argv(
         "--release-manifest",
         str(manifest),
     ]
+    if boundary_input is not None:
+        argv.extend(["--boundary-input", str(boundary_input)])
     for path in decision_records:
         argv.extend(["--decision-record", str(path)])
     for path in policy_exceptions:
@@ -445,6 +448,7 @@ def test_f1_hostile_paths_and_genuine_full_stop_filenames(tmp_path, capsys):
         policy_exceptions=(exception,),
         trust_root=env.trust_root,
         authority_evidence=evidence,
+        boundary_input=boundary,
     )
     for preview_tail in preview_tails:
         tokens = _assert_tail_is_a_canonical_command_line(preview_tail)
@@ -529,11 +533,11 @@ def test_literal_retry_tail_replays_the_exact_observation(tmp_path, capsys):
     baseline the decorated last path made the replay fail closed instead."""
 
     from tests.test_owner_readiness_summary_r1_probes import (
+        _distinct_accept_record,
         _probe_dir,
         _revocation_file,
         _signed_revocation_evidence,
         _signed_supersession_evidence,
-        _distinct_accept_record,
     )
 
     env = _Env(tmp_path).setup(capsys)
@@ -550,7 +554,7 @@ def test_literal_retry_tail_replays_the_exact_observation(tmp_path, capsys):
         capsys,
         project_config=env.config_path,
         activation_root=env.activation_root,
-        decision_records=[env.record_path, env.record_path],
+        decision_records=[env.record_path, superseding],
         policy_exceptions=[env.exception_path, env.exception_path],
         trust_root=env.trust_root,
         authority_evidence=env.bundle_path,
@@ -571,7 +575,7 @@ def test_literal_retry_tail_replays_the_exact_observation(tmp_path, capsys):
     expected = _expected_retry_argv(
         config=env.config_path,
         activation_root=env.activation_root,
-        decision_records=(env.record_path, env.record_path),
+        decision_records=(env.record_path, superseding),
         revocations=(revocation, revocation),
         policy_exceptions=(env.exception_path, env.exception_path),
         trust_root=env.trust_root,

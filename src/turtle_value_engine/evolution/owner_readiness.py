@@ -24,16 +24,24 @@ derived view over those facts, never a new authorization decision.
 ``plan-activation`` / ``activate-profile`` remain the authorization
 boundaries and ``activation-status`` remains the store authority.
 
-Next-step hint composition contract (Phase 7-C4-C-R1):
+Next-step hint composition contract (Phase 7-C4-C-R1, hardened by
+Phase 7-C4-C-R2):
 
-* an *executable* command appears only as the final segment after the last
-  full-width colon ``：`` of a step, is composed from its exact argument
+* an *executable* command appears only as the complete final segment
+  after the last full-width colon ``：`` of a step **with nothing after
+  it** — no trailing sentence punctuation ``。``, whitespace annotation,
+  Markdown or prose — so an operator's unmodified copy of that segment is
+  exactly the command.  The command is composed from its exact argument
   vector through :func:`shlex.join` (no raw placeholders, no shell
-  operators) and names only a complete read-only operation whose required
-  inputs are actually known;
+  operators), names only a complete read-only operation whose required
+  inputs are actually known, and human-readable punctuation belongs
+  before the colon, never after the command; a genuine ``。`` inside an
+  operator-supplied filename stays quoted as part of that path;
 * commands that persist a file (``decision-dossier``, ``plan-activation``,
   both of which *require* an operator-chosen ``--output``) are described in
-  prose with their write disclosed, never displayed as paste-ready text;
+  prose with their write disclosed — neither is the journey's only write,
+  and each names the operator's own output-path choice — never displayed
+  as paste-ready text;
 * a retry/preview command advertised as replaying the observed state is
   composed only when the exact explicitly supplied CLI path inputs are
   known (the bounded :class:`ReadinessReplayInputsV1` passed by the CLI
@@ -563,7 +571,7 @@ def _next_steps_zh(
     else:
         retry_command = None
     retry_step = (
-        f"重新运行本命令复核（零写入，输入逐项原样保留）：{retry_command}。"
+        f"重新运行本命令复核（零写入，输入逐项原样保留）：{retry_command}"
         if retry_command is not None
         else (
             "重新运行 tve evolution readiness-summary 复核时，请原样保留本次提供的"
@@ -585,7 +593,7 @@ def _next_steps_zh(
         else None
     )
     status_step = (
-        f"用只读状态检查复核（零写入）：{status_command}。"
+        f"用只读状态检查复核（零写入）：{status_command}"
         if status_command is not None
         else (
             "只读状态检查 activation-status 需要 --activation-root 与 "
@@ -610,10 +618,11 @@ def _next_steps_zh(
     )
     # decision-dossier / plan-activation REQUIRE an operator-chosen --output
     # and persist a file: prose with the write disclosed, never a paste-ready
-    # command (an unknown output path is not real input).
+    # command (an unknown output path is not real input).  Both are opt-in
+    # write operations; neither is the journey's only write.
     dossier_step = (
-        "生成决策材料（该步骤会写入你显式选择的 Markdown 文件，是旅程中唯一写"
-        f"文件步骤）：运行 tve evolution decision-dossier，传入 --base-profile "
+        "生成决策材料（该步骤会写入你显式选择的 Markdown 文件，--output 输出"
+        f"路径由你显式指定）：运行 tve evolution decision-dossier，传入 --base-profile "
         f"{shlex.quote(base)} --target-profile {shlex.quote(target)} "
         f"--release-manifest {shlex.quote(manifest)}，再显式加上 --output 与你"
         "选择的输出路径。"
@@ -622,14 +631,14 @@ def _next_steps_zh(
         plan_activation_step = (
             "如需导出完整计划文件，可运行 tve evolution plan-activation：传入与"
             "上述重放命令完全相同的输入，并额外显式选择 --output 输出路径；该命令"
-            "会写入该计划文件（写文件命令，非零写入检查）。"
+            "同样会写入你显式选择的计划文件（写文件命令，非零写入检查）。"
         )
     else:
         plan_activation_step = (
             "如需导出完整计划文件，可运行 tve evolution plan-activation：传入与本"
             "次 readiness-summary 完全相同的全部输入（决策记录、策略例外、信任根、"
             "证据等，可重复项保持顺序与次数），并额外显式选择 --output 输出路径；"
-            "该命令会写入该计划文件（写文件命令，非零写入检查）。"
+            "该命令同样会写入你显式选择的计划文件（写文件命令，非零写入检查）。"
         )
 
     if journey_state == "OWNER_DECISION_REQUIRED":
@@ -657,14 +666,14 @@ def _next_steps_zh(
         return [
             "存在互相冲突的决策记录（例如同时有 ACCEPT 与 REJECT）：请以签名撤销/"
             "取代（owner-lifecycle）澄清后重试；在此之前任何启用都被阻塞。",
-            f"澄清后重新运行本命令核对：{retry_command}。" if retry_command else retry_step,
+            f"澄清后重新运行本命令核对：{retry_command}" if retry_command else retry_step,
         ]
     if journey_state == "OWNER_AUTHORITY_NOT_PROVEN":
         return [
             "决策记录存在但其授权未获当前信任根的全新验证（缺少 --trust-root/"
             "--authority-evidence、密钥被撤销/轮换或证据过期）：以当前信任根重新"
             "捕获证据，或重新签名记录。",
-            f"修正后重新运行本命令核对 plan_blockers 是否清空：{retry_command}。"
+            f"修正后重新运行本命令核对 plan_blockers 是否清空：{retry_command}"
             if retry_command
             else retry_step,
         ]
@@ -673,20 +682,20 @@ def _next_steps_zh(
             "发布配对未通过结构校验（字节哈希、身份或清单校验失败）：请勿启用；"
             "核对文件字节后重新运行只读审计命令 tve evolution audit-profile 定位"
             "具体检查。",
-            f"修复来源后重新运行本命令：{retry_command}。" if retry_command else retry_step,
+            f"修复来源后重新运行本命令：{retry_command}" if retry_command else retry_step,
         ]
     if journey_state == "ACTIVATION_BLOCKED":
         return [
             "计划仍被阻塞（见 plan_blockers，如绑定过期、例外缺失、配置已是目标"
             "等）：逐项处理命名阻塞项。",
             plan_activation_step,
-            f"或重跑本命令：{retry_command}。" if retry_command else retry_step,
+            f"或重跑本命令：{retry_command}" if retry_command else retry_step,
         ]
     if journey_state == "RECOVERY_PENDING":
         assert status_command is not None  # store facts require a root
         return [
             "存在中断的激活/回滚步骤：先用只读状态检查确认具体阶段："
-            f"{status_command}。",
+            f"{status_command}",
             "按其指引重新执行同一 apply/rollback 命令即可确定性补齐（不会重复"
             "改写配置）；本摘要不会替你执行任何恢复。",
         ]
@@ -695,7 +704,7 @@ def _next_steps_zh(
         return [
             "激活存储存在分歧、歧义或损坏条目（见 activation_store_problems）："
             "逐项人工核对（比对 before-images/ 备份），本命令不修复。",
-            f"先运行只读状态检查定位：{status_command}。",
+            f"先运行只读状态检查定位：{status_command}",
         ]
     if journey_state == "ALREADY_APPLIED":
         return [
@@ -716,7 +725,7 @@ def _next_steps_zh(
     if preview_command is not None:
         steps.append(
             "运行只读预览（零写入），核对唯一变更行、plan_id 与 "
-            f"original_config_sha256：{preview_command}。"
+            f"original_config_sha256：{preview_command}"
         )
     else:
         steps.append(
