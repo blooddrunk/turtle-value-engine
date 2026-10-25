@@ -2956,6 +2956,7 @@ def _run_evolution_readiness_summary_command(args: argparse.Namespace) -> object
         _guard_target_config,
     )
     from turtle_value_engine.evolution.owner_readiness import (
+        ReadinessReplayInputsV1,
         summarize_owner_readiness,
     )
 
@@ -2974,6 +2975,29 @@ def _run_evolution_readiness_summary_command(args: argparse.Namespace) -> object
     if args.decision_record is None:
         args.decision_record = []
     prepared = _prepare_activation_inputs(args)
+    # The bounded hint provenance of the explicitly supplied CLI path
+    # options (order and multiplicity preserved); it feeds ONLY the
+    # next-step hint text, never any verification or identity path.
+    replay_inputs = ReadinessReplayInputsV1(
+        decision_records=tuple(str(path) for path in args.decision_record),
+        revocations=tuple(str(path) for path in args.revocation or []),
+        policy_exceptions=tuple(str(path) for path in args.policy_exception or []),
+        signed_revocations=tuple(str(path) for path in args.signed_revocation or []),
+        signed_supersessions=tuple(
+            str(path) for path in args.signed_supersession or []
+        ),
+        trust_root=(
+            str(args.trust_root) if args.trust_root is not None else None
+        ),
+        authority_evidence=(
+            str(args.authority_evidence)
+            if args.authority_evidence is not None
+            else None
+        ),
+        boundary_input=(
+            str(args.boundary_input) if args.boundary_input is not None else None
+        ),
+    )
     return summarize_owner_readiness(
         base_profile_path=args.base_profile,
         target_profile_path=args.target_profile,
@@ -2989,6 +3013,7 @@ def _run_evolution_readiness_summary_command(args: argparse.Namespace) -> object
         signed_supersessions=prepared["signed_supersessions"],
         lifecycle_trust_root=prepared["lifecycle_trust_root"],
         activation_root=args.activation_root,
+        replay_inputs=replay_inputs,
     )
 
 
