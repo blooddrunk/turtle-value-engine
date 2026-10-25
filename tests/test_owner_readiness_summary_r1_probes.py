@@ -91,11 +91,14 @@ _READONLY_SUBCOMMANDS = frozenset(
 def _executable_hints(steps: list[str]) -> list[str]:
     """Extract the executable command of every command-bearing step.
 
-    Composition contract (C4-C-R1): when a step carries an executable
-    command, that command is the final segment after the LAST full-width
-    colon ``：`` of the step and the step ends with prose punctuation
-    ``。``.  Anything else mentioning ``tve`` is prose and must not start
-    with ``tve `` after the last colon.
+    Composition contract (C4-C-R1, hardened by C4-C-R2): when a step
+    carries an executable command, that command is the complete final
+    segment after the LAST full-width colon ``：`` of the step with
+    NOTHING after it — no trailing ``。`` or any other decoration.  This
+    extractor performs no stripping of any kind (the pre-R2 form stripped
+    a trailing ``。`` and thereby masked the copyability defect; the R2
+    probes pin the literal tail).  Anything else mentioning ``tve`` is
+    prose and must not start with ``tve `` after the last colon.
     """
 
     hints: list[str] = []
@@ -103,8 +106,6 @@ def _executable_hints(steps: list[str]) -> list[str]:
         if "：" not in step:
             continue
         tail = step.rsplit("：", 1)[1]
-        if tail.endswith("。"):
-            tail = tail[:-1]
         if tail.startswith("tve "):
             hints.append(tail)
     return hints
