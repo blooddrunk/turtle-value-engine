@@ -619,7 +619,10 @@ def _next_steps_zh(
     # decision-dossier / plan-activation REQUIRE an operator-chosen --output
     # and persist a file: prose with the write disclosed, never a paste-ready
     # command (an unknown output path is not real input).  Both are opt-in
-    # write operations; neither is the journey's only write.
+    # write operations; neither is the journey's only write.  R3: the plan
+    # prose must not advertise full readiness-summary argv reuse — the plan
+    # parser rejects --activation-root and requires record/output plus
+    # reference-inventory options the summary never exposes.
     dossier_step = (
         "生成决策材料（该步骤会写入你显式选择的 Markdown 文件，--output 输出"
         f"路径由你显式指定）：运行 tve evolution decision-dossier，传入 --base-profile "
@@ -629,16 +632,35 @@ def _next_steps_zh(
     )
     if retry_command is not None:
         plan_activation_step = (
-            "如需导出完整计划文件，可运行 tve evolution plan-activation：传入与"
-            "上述重放命令完全相同的输入，并额外显式选择 --output 输出路径；该命令"
-            "同样会写入你显式选择的计划文件（写文件命令，非零写入检查）。"
+            "如需导出完整计划文件，可运行 tve evolution plan-activation（可选"
+            "写文件步骤，该命令同样会写入你显式选择的计划文件）：它与上述重放"
+            "命令共享同一组来源输入（--base-profile/--target-profile/"
+            "--release-manifest/--project-config，以及本次提供的 --decision-record/"
+            "--revocation/--policy-exception/--trust-root/--authority-evidence/"
+            "--signed-revocation/--signed-supersession/--boundary-input，可重复项"
+            "保持顺序与次数），但 --activation-root 是 readiness-summary 的专有"
+            "参数，plan-activation 不接受该参数，请勿传入；plan-activation 必须"
+            "提供真实的 --decision-record，且必须由你显式选择 --output 输出"
+            "路径；它另有本摘要未采用的受影响引用清单参数（--watchlist/"
+            "--normalized-input/--backtest-manifest/--surface-snapshot/"
+            "--runner-config，可重复），本次摘要的输入不构成完整的受影响引用"
+            "清单，请按 plan-activation --help 核对后自行补齐。"
         )
     else:
         plan_activation_step = (
-            "如需导出完整计划文件，可运行 tve evolution plan-activation：传入与本"
-            "次 readiness-summary 完全相同的全部输入（决策记录、策略例外、信任根、"
-            "证据等，可重复项保持顺序与次数），并额外显式选择 --output 输出路径；"
-            "该命令同样会写入你显式选择的计划文件（写文件命令，非零写入检查）。"
+            "如需导出完整计划文件，可运行 tve evolution plan-activation（可选"
+            "写文件步骤，该命令同样会写入你显式选择的计划文件）：它与本次 "
+            "readiness-summary 共享同一组来源输入（--base-profile/"
+            "--target-profile/--release-manifest/--project-config，以及本次提供的 "
+            "--decision-record/--revocation/--policy-exception/--trust-root/"
+            "--authority-evidence/--signed-revocation/--signed-supersession/"
+            "--boundary-input，可重复项保持顺序与次数），但 --activation-root 是 "
+            "readiness-summary 的专有参数，plan-activation 不接受该参数，请勿"
+            "传入；plan-activation 必须提供真实的 --decision-record，且必须由你"
+            "显式选择 --output 输出路径；它另有本摘要未采用的受影响引用清单"
+            "参数（--watchlist/--normalized-input/--backtest-manifest/"
+            "--surface-snapshot/--runner-config，可重复），本次摘要的输入不构成"
+            "完整的受影响引用清单，请按 plan-activation --help 核对后自行补齐。"
         )
 
     if journey_state == "OWNER_DECISION_REQUIRED":
