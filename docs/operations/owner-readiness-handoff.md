@@ -80,6 +80,17 @@ python -m turtle_value_engine evolution readiness-summary \
   材料，后者为计划文件——两者都是可选的写文件操作，旅程中不止一步会
   写文件），它们只以文字说明出现（明确披露写入、要求你自选输出路径），
   永不以可复制命令形式出现。
+- **命令参数不混用（R3）**：`plan-activation` 与 `readiness-summary` 的
+  参数集并不相同。两者共享 `--base-profile/--target-profile/
+  --release-manifest/--project-config` 与决策/例外/信任/证据等来源输入；
+  但 `--activation-root` 是 `readiness-summary` 专有参数（`plan-activation`
+  不接受它，传入会被参数解析直接拒绝，务必不要照抄重放命令的全部参数）；
+  `plan-activation` 额外要求必填的 `--decision-record` 与 `--output`，并
+  接受 `readiness-summary` 没有的受影响引用清单参数（`--watchlist/
+  --normalized-input/--backtest-manifest/--surface-snapshot/--runner-config`，
+  可重复）。一次 `readiness-summary` 的输入不构成完整的计划引用清单；
+  摘要的提示文字会明确说明上述区别，`plan-activation --help` 才是该命令
+  参数的权威清单。
 - **不完整的命令不生成**：例如未提供 `--activation-root` 时不会给出
   号称可直接运行的 `activate-profile` 预览命令（该参数是解析器必填），
   而是文字说明需要补齐什么。
@@ -160,4 +171,13 @@ activate-profile 预览）均为零写入。
   预期逐项一致（含真实以"。"结尾的文件名）、全部 11 种 journey_state
   的命令完整且安全、字面重试命令经真实 CLI 重放同一
   summary_id/content_sha256，以及两个写文件命令的写入披露不再声称
-  "唯一写文件步骤"。
+  "唯一写文件步骤"；`tests/test_owner_readiness_summary_r3_probes.py`
+  （12 项，C4-C-R3）以**真实 CLI 解析器**（仅 parse_args，绝不执行
+  handler 或写计划文件）钉死 `readiness-summary` 与 `plan-activation`
+  的共享/专有/必填参数规则——`--activation-root` 传入 plan-activation
+  会被拒绝（SystemExit 2）、去掉后即可解析、`--decision-record` 与
+  `--output` 为 plan 必填、引用清单参数为 plan 专有——并以真实
+  ACTIVATION_BLOCKED 旅程（带/不带 `--activation-root`、以及无重放
+  来源的库分支）证明导出指引明确区分共享输入与专有参数、不再声称
+  "完全相同的输入"，且恶意路径下该步骤保持纯文字、只读命令尾部
+  规则与 R2 完全一致。
