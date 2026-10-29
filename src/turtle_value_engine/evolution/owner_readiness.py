@@ -182,7 +182,31 @@ class OwnerReadinessSummaryV1(BaseModel):
 
     contract: Literal["owner_readiness_summary_v1"] = "owner_readiness_summary_v1"
     schema_version: StrictStr = Field(default="1.0.0", pattern=r"^\d+\.\d+\.\d+$")
-    summary_id: StrictStr = Field(min_length=1)
+    summary_id: StrictStr = Field(
+        min_length=1,
+        description=(
+            "Semantic observed-core identity of this journey observation — "
+            "NOT a unique identity of the complete projection (the Phase "
+            "7-C4-D contract decision). It is derived from the published "
+            "base/target profile identities and byte hashes, the release "
+            "manifest identity/content hash, the fresh activation plan id "
+            "plus the full plan content hash (which transitively binds the "
+            "whole plan payload, including the supplied project-config "
+            "path spelling through the plan's config inventory), the "
+            "activation-store status, the observed project-config byte "
+            "hash and the derived journey state. It deliberately excludes "
+            "the activation-store problems/guidance and the next-step hint "
+            "text (including decision/exception/trust/evidence path "
+            "spellings displayed there), so two observations that differ "
+            "only in those presentation fields share one summary_id while "
+            "differing in content_sha256. Equal summary_id means 'same "
+            "semantic journey observation', never 'byte-identical "
+            "summary'; exact-projection equality, and any deduplication "
+            "or persistence key, must use content_sha256 (or the pair "
+            "(summary_id, content_sha256) when semantic grouping plus an "
+            "exact variant is needed)."
+        ),
+    )
 
     # --- published pair (fresh C1 audit facts) ---
     base_profile_id: StrictStr = Field(min_length=1, max_length=128)
@@ -250,7 +274,21 @@ class OwnerReadinessSummaryV1(BaseModel):
     summary_is_informational_not_authorization: Literal[True] = True
     read_only_observation: Literal[True] = True
 
-    content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    content_sha256: StrictStr = Field(
+        pattern=_HASH_PATTERN,
+        description=(
+            "Exact full-projection identity: the SHA-256 over the canonical "
+            "JSON serialization of the complete summary payload EXCLUDING "
+            "this field itself (no hash cycle), recomputed and enforced by "
+            "the model validator. Two summaries may share one summary_id "
+            "(the semantic observed-core identity) while differing here — "
+            "this field is what distinguishes them. Compare it (or the "
+            "whole serialized payload) for byte-exact replay equality and "
+            "use it as the exact-content key whenever a consumer persists "
+            "summaries; it proves integrity of the observed bytes only and "
+            "is never authenticity, authority or an approval."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_summary(self) -> Self:
