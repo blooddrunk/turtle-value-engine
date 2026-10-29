@@ -43,6 +43,8 @@ python -m turtle_value_engine evolution readiness-summary \
 | 字段 | 含义 |
 | --- | --- |
 | `journey_state` | **单一状态答案**（下表 11 个值之一） |
+| `summary_id` | **语义核心身份**（见下"两个身份字段"契约；不是完整投影的唯一标识） |
+| `content_sha256` | **完整投影的精确身份**（整份输出的规范 JSON 自哈希，不含自身；字节级复现比较与去重键用它） |
 | `base/target_profile_id`、`*_sha256`、`release_manifest_id/_content_sha256` | 正在评估的发布配对身份与哈希 |
 | `published_bytes_verified` | 发布字节/身份是否全部通过结构校验 |
 | `audit_activation_readiness`、`uncovered_policy_findings` | 新鲜 C1 审计就绪状态与未覆盖发现 |
@@ -55,6 +57,48 @@ python -m turtle_value_engine evolution readiness-summary \
 | `activation_store_status/_problems/_guidance_zh` | 原样嵌入的 C4-B `activation-status` 投影 |
 | `informational_blockers` | 信息性阻塞项（如 `OWNER_DECISION_REQUIRED`、审计政策发现、计划阻塞项并集） |
 | `next_steps_zh` | 针对当前状态的下一步提示（Phase 7-C4-C-R1 起遵守下述"提示安全约定"） |
+
+### 两个身份字段的确切含义（Phase 7-C4-D 契约决定）
+
+输出携带**两个刻意不同**的身份字段，二者分工如下（决定记录见
+`docs/status/phase-7-c4-d-2026-10-29.md`；schema 字段描述同步更新）：
+
+- **`summary_id` 是语义核心身份，不是完整投影的唯一标识。**它由
+  `deterministic_id` 从以下"观察到的核心事实"派生：发布配对的身份与字节
+  哈希（base/target profile、release manifest）、新鲜激活计划的
+  `plan_id` 与**完整计划内容哈希**（由此**间接**绑定整个计划载荷——包括
+  你提供的 `--project-config` **路径拼写**，它进入计划的配置清单条目）、
+  激活存储的**状态**（仅状态，不含 problems/guidance）、观察到的配置
+  字节哈希、派生的 `journey_state`。它**刻意排除**：激活存储的
+  problems/guidance 文本、`next_steps_zh` 提示文本（包括其中展示的
+  决策记录/例外/信任根/证据**路径拼写**及其顺序与次数）。因此：
+  同一状态类下两组不同的存储问题集、或仅提示文本不同的两次观察，
+  会**共享同一个 `summary_id`**（这是 v1 的既定属性，R1 诊断测试
+  `test_diagnostic_summary_id_shared_across_distinct_store_problems`
+  钉死该行为，不是缺陷）。
+- **`content_sha256` 是完整投影的精确身份。**它是对**除自身以外**的
+  完整规范 JSON 载荷的 SHA-256（无自引用哈希环），由模型校验器重算并
+  强制执行。两次观察只要任何一个字节不同（包括提示文本、路径拼写、
+  存储问题集），它就不同。
+
+**比较与去重规则（规范性）：**
+
+1. **字节级复现比较**：比较整份输出或 `content_sha256`；相等即逐字节
+   相同。
+2. **语义旅程比较**：`summary_id` 相等仅表示"同一语义旅程观察"
+   （同一发布配对、同一计划内容、同一存储状态、同一配置字节、同一
+   旅程状态），**不**表示输出逐字节相同。
+3. **持久化/去重键**：任何持久化或缓存摘要的消费方**绝不能只用
+   `summary_id` 去重**（会把同一状态类下的不同观察折叠为一）；必须用
+   `content_sha256`，或需要"语义分组 + 精确变体"时用二元组
+   `(summary_id, content_sha256)`。
+4. `content_sha256` 只证明**完整性**，不是**真实性**：篡改内容后如实
+   重算哈希会得到一个模型有效但身份不同的输出（C4-D 特征化测试钉死
+   该性质）。本摘要本来就不是授权凭证，任何身份字段都不构成授权。
+5. 本仓库不持久化任何摘要（命令没有 `--output`），因此仓库内不存在
+   按任一字段去重的消费方；仓库之外的消费方（若你自行捕获了 stdout）
+   必须遵守上述第 3 条。若未来出现需要"ID 即完整投影哈希"的真实需求，
+   应另行设计可选、独立版本化的 v2 契约，而不是重定义 v1。
 
 ### 提示安全约定（Phase 7-C4-C-R1 起，Phase 7-C4-C-R2 加固）
 
@@ -146,7 +190,8 @@ activate-profile 预览）均为零写入。
 
 ## 4. 判定不变量（工程边界）
 
-- 输出确定性：相同字节重复运行逐字节一致（`content_sha256` 自校验）。
+- 输出确定性：相同字节重复运行逐字节一致（`content_sha256` 自校验；
+  `summary_id` 与 `content_sha256` 的分工见上文"两个身份字段"契约）。
 - 秘密零泄漏：输出不含私钥材料、不合成所有者身份或许可；
   `requires_human_policy_approval=true`、`automatic_activation_allowed=false`、
   `execution_performed=false` 为固定字面量。
@@ -180,4 +225,11 @@ activate-profile 预览）均为零写入。
   ACTIVATION_BLOCKED 旅程（带/不带 `--activation-root`、以及无重放
   来源的库分支）证明导出指引明确区分共享输入与专有参数、不再声称
   "完全相同的输入"，且恶意路径下该步骤保持纯文字、只读命令尾部
-  规则与 R2 完全一致。
+  规则与 R2 完全一致；`tests/test_owner_readiness_summary_c4d_contract.py`
+  （10 项，C4-D）则以可弃置特征化对照钉死双身份契约本身：逐字节重放
+  两身份皆等、同状态不同存储问题集共享 `summary_id` 而内容哈希不同、
+  决策记录路径拼写与提示文本仅影响内容哈希、配置**字节**与决策上下文
+  变化改变 `summary_id`、所供配置**路径拼写**经计划清单间接进入
+  `summary_id`、过期/伪造自哈希被模型拒绝、如实重算的篡改得到模型有效
+  但内容身份不同的输出（完整性≠真实性）、特征化全程零写入无套接字，
+  并对 schema 双身份描述做漂移校验。
