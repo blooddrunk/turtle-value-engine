@@ -1,5 +1,7 @@
 """Static guard for GitHub Actions supply-chain provenance in repository workflows.
 
+Phase-2 fast-path verification probe (2026-11-06): comment-only change; behavior is unchanged.
+
 Every external ``uses:`` reference in the repository's workflow files must point
 at an immutable full 40-character commit SHA and carry a trailing ``# vX.Y.Z``
 version comment so the pinned commit stays traceable to an upstream release.
