@@ -986,3 +986,4 @@ __all__ = [
 ]
 
 # Phase-2 fast-path verification probe (2026-11-06): comment-only source change.
+# Phase-2 second push: head moved mid-run; the old run must be cancelled and reclassified.
