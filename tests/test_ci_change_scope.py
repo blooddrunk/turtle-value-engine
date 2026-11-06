@@ -503,6 +503,44 @@ def test_fetch_json_keeps_token_off_redirects_and_never_follows_them():
     assert req.unredirected_hdrs["Authorization"] == "Bearer t"
 
 
+# --- Boundary composition: real fetcher guards must hold through resolve_mode ----------
+
+
+def test_http_api_url_fails_closed_through_real_fetcher(tmp_path):
+    # The scheme guard lives in the real fetch_json before any network I/O, so
+    # the production path (no injected fetcher) must degrade to full offline.
+    env = _write_event(tmp_path)
+    env["GITHUB_API_URL"] = "http://api.github.test"
+    mode, reason = scope.resolve_mode(env)
+    assert mode == "full"
+    assert reason.startswith("scope detection failed closed")
+    assert "https" in reason
+
+
+def test_empty_token_fails_closed_through_real_fetcher(tmp_path):
+    env = _write_event(tmp_path)
+    env["GITHUB_TOKEN"] = ""
+    mode, reason = scope.resolve_mode(env, scope.fetch_json)
+    assert mode == "full"
+    assert reason.startswith("scope detection failed closed")
+
+
+def test_non_object_event_payload_fails_closed(tmp_path):
+    path = tmp_path / "event.json"
+    path.write_text(json.dumps(["not", "an", "object"]), encoding="utf-8")
+    env = {
+        "GITHUB_EVENT_NAME": "pull_request",
+        "GITHUB_EVENT_PATH": str(path),
+        "GITHUB_REPOSITORY": "o/r",
+        "GITHUB_TOKEN": "t",
+    }
+    assert _resolve(env, _pr_fetcher([changed("docs/status/a.md")])) == "full"
+
+
+def test_empty_filename_fails_closed():
+    assert classify_changed_files([changed("")]) == "full"
+
+
 # --- Workflow structure: main keeps the full matrix, fast paths stay narrow ----------
 
 _CONDITION_PREFIX = "steps.scope.outputs.mode "
