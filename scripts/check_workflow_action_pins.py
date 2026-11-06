@@ -30,6 +30,10 @@ rejected because its single annotated source line would have to authorize
 multiple effective occurrences. Anchors whose subtree contains no ``uses`` key
 are harmless and stay clean, and the memoized traversal stays linear in unique
 nodes plus alias references, so alias fan-out cannot cause exponential work.
+A memoized alias re-reference additionally never re-expands the shared
+subtree's occurrences into the caller's list, so the materialized occurrence
+multiset and every diagnostic stay bounded by unique nodes and distinct
+source ``uses`` lines instead of root-to-node paths.
 """
 
 from __future__ import annotations
@@ -61,10 +65,14 @@ class _SubtreeUses:
     """``uses`` occurrences collected inside one composed YAML subtree, plus
     whether the subtree contains any ``uses`` key at all (shared-alias
     detection must fire even when the occurrences themselves fail line
-    binding)."""
+    binding) and the subtree's first ``uses`` source line. ``first_uses_line``
+    is derived from the node structure during the fresh traversal, so the
+    shared-alias diagnostic anchor stays exact even when a compact
+    (non-re-expanded) occurrence list no longer carries every entry."""
 
     occurrences: tuple[tuple[int, str, int], ...]
     has_uses: bool
+    first_uses_line: int | None = None
 
 
 @dataclass
@@ -74,14 +82,37 @@ class _AliasGraphState:
     ``active`` holds node ids on the current depth-first path (a node reached
     while active is a back-edge: a cyclic alias graph). ``done`` memoizes each
     node's subtree result, which both bounds alias fan-out DAGs to linear work
-    and identifies a completed node reached again as an alias re-reference."""
+    and identifies a completed node reached again as an alias re-reference.
+    ``alias_ref_result`` is set at every collector return so the caller can
+    tell a fresh child traversal from a memoized alias re-reference and never
+    re-expand a shared subtree's occurrences into its own list."""
 
     active: set[int] = field(default_factory=set)
     done: dict[int, _SubtreeUses] = field(default_factory=dict)
     reported_shared: set[int] = field(default_factory=set)
     reported_cycles: set[int] = field(default_factory=set)
+    reported_violations: set[tuple[int, str]] = field(default_factory=set)
     duplicate_key_lines: list[int] = field(default_factory=list)
     graph_violations: list[tuple[int, str]] = field(default_factory=list)
+    # True when the most recent collector return was a memoized alias
+    # re-reference; callers read it immediately after each child call,
+    # before any other call can overwrite it.
+    alias_ref_result: bool = False
+
+
+def _record_graph_violation(
+    state: _AliasGraphState, line: int, message: str
+) -> None:
+    """Append one graph diagnostic, deduplicated on its exact
+    ``(line, message)`` pair, so repeated sharing that anchors equivalent
+    subtrees (for example a doubling alias DAG whose every level resolves to
+    the same ``uses`` source line) yields one diagnostic per distinct source
+    line, never one per alias re-reference."""
+    key = (line, message)
+    if key in state.reported_violations:
+        return
+    state.reported_violations.add(key)
+    state.graph_violations.append(key)
 
 
 def _collect_yaml_use_occurrences(
@@ -97,7 +128,17 @@ def _collect_yaml_use_occurrences(
     after completion is an alias re-reference whose subtree would authorize
     several effective occurrences with one set of source lines. Both are
     reported through ``_state.graph_violations`` as controlled diagnostics by
-    the caller, never as unbounded recursion."""
+    the caller, never as unbounded recursion.
+
+    Occurrences are additionally never re-expanded through alias
+    re-references: a caller receiving a memoized result (signalled through
+    ``_state.alias_ref_result``, set at every return) keeps the child's
+    ``has_uses`` flag but does not copy its occurrences again, so a fan-out
+    DAG materializes at most one entry per distinct source ``uses`` key per
+    node instead of one per root-to-node path. The skipped entries are exact
+    duplicates of the defining reference's occurrences and their subtree
+    sharing is already a reported violation, so no binding diagnostic is
+    lost."""
     if _state is None:
         _state = _AliasGraphState()
     node_id = id(node)
@@ -105,33 +146,33 @@ def _collect_yaml_use_occurrences(
     if completed is not None:
         if completed.has_uses and node_id not in _state.reported_shared:
             _state.reported_shared.add(node_id)
-            first_line = min(
-                (key_line for key_line, _value, _line in completed.occurrences),
-                default=node.start_mark.line + 1,
+            first_line = completed.first_uses_line
+            if first_line is None:  # defensive: unreachable while has_uses
+                first_line = node.start_mark.line + 1
+            _record_graph_violation(
+                _state,
+                first_line,
+                "'uses:' occurrence is shared through a YAML alias: one "
+                "annotated source line cannot authorize multiple effective "
+                "action references",
             )
-            _state.graph_violations.append(
-                (
-                    first_line,
-                    "'uses:' occurrence is shared through a YAML alias: one "
-                    "annotated source line cannot authorize multiple effective "
-                    "action references",
-                )
-            )
+        _state.alias_ref_result = True
         return completed
     if node_id in _state.active:
         if node_id not in _state.reported_cycles:
             _state.reported_cycles.add(node_id)
-            _state.graph_violations.append(
-                (
-                    node.start_mark.line + 1,
-                    "cyclic YAML alias graph (an anchor is referenced inside "
-                    "its own definition); refusing to traverse",
-                )
+            _record_graph_violation(
+                _state,
+                node.start_mark.line + 1,
+                "cyclic YAML alias graph (an anchor is referenced inside "
+                "its own definition); refusing to traverse",
             )
+        _state.alias_ref_result = False
         return _SubtreeUses((), False)
     _state.active.add(node_id)
     occurrences: list[tuple[int, str, int]] = []
     has_uses = False
+    first_uses_line: int | None = None
     if isinstance(node, yaml.MappingNode):
         uses_pairs = [
             (key_node, value_node)
@@ -140,6 +181,7 @@ def _collect_yaml_use_occurrences(
         ]
         if uses_pairs:
             has_uses = True
+            first_uses_line = uses_pairs[0][0].start_mark.line + 1
         if len(uses_pairs) > 1:
             _state.duplicate_key_lines.append(uses_pairs[1][0].start_mark.line + 1)
         for key_node, value_node in uses_pairs:
@@ -158,16 +200,31 @@ def _collect_yaml_use_occurrences(
             )
         for _key_node, value_node in node.value:
             child = _collect_yaml_use_occurrences(value_node, _state)
-            occurrences.extend(child.occurrences)
+            if not _state.alias_ref_result:
+                occurrences.extend(child.occurrences)
             has_uses = has_uses or child.has_uses
+            if child.first_uses_line is not None:
+                first_uses_line = (
+                    child.first_uses_line
+                    if first_uses_line is None
+                    else min(first_uses_line, child.first_uses_line)
+                )
     elif isinstance(node, yaml.SequenceNode):
         for item in node.value:
             child = _collect_yaml_use_occurrences(item, _state)
-            occurrences.extend(child.occurrences)
+            if not _state.alias_ref_result:
+                occurrences.extend(child.occurrences)
             has_uses = has_uses or child.has_uses
+            if child.first_uses_line is not None:
+                first_uses_line = (
+                    child.first_uses_line
+                    if first_uses_line is None
+                    else min(first_uses_line, child.first_uses_line)
+                )
     _state.active.discard(node_id)
-    result = _SubtreeUses(tuple(occurrences), has_uses)
+    result = _SubtreeUses(tuple(occurrences), has_uses, first_uses_line)
     _state.done[node_id] = result
+    _state.alias_ref_result = False
     return result
 
 

@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 import scripts.check_workflow_action_pins as guard
 
@@ -628,3 +629,178 @@ jobs:
 """
     workflows = _write(tmp_path, "dead-anchor.yml", workflow)
     assert guard.main([str(workflows)]) == 0
+
+
+# --- Issue #51 F6: uses-bearing alias DAG materialization must stay bounded ---
+
+
+CHECKOUT_PIN = (
+    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1"
+)
+
+
+def _doubling_alias_dag_workflow(depth: int, *, uses_base: bool) -> str:
+    """Tiny-input doubling alias DAG (Issue #51 F6 fixture generator).
+
+    Each ``l{i}`` sequence references ``l{i-1}`` twice, so the composed
+    unique-node set grows linearly with ``depth`` while root-to-node paths
+    double at every level. ``uses_base`` plants a pinned ``uses`` key inside
+    the shared leaf; the non-``uses`` variant is the benign control."""
+    lines = [
+        "name: CI",
+        "jobs:",
+        "  test:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        f"      - uses: {CHECKOUT_PIN}",
+        "layers:",
+    ]
+    if uses_base:
+        lines.extend(["  l0: &l0", f"    uses: {CHECKOUT_PIN}"])
+    else:
+        lines.append("  l0: &l0 [0]")
+    lines.extend(
+        f"  l{i}: &l{i} [*l{i - 1}, *l{i - 1}]" for i in range(1, depth + 1)
+    )
+    return "\n".join(lines) + "\n"
+
+
+def test_guard_bounds_uses_bearing_alias_dag_occurrence_materialization(
+    tmp_path: Path,
+) -> None:
+    """F6: the R3 memoized collector visits each node once, but every caller
+    still re-copied completed children's ``occurrences`` through alias
+    re-references, so this 649-byte fixture materialized 524,288 root
+    occurrences (2**19) from 29 unique nodes on main@6aa29c9. Occurrence
+    materialization must stay bounded by distinct source ``uses`` lines, not
+    by root-to-node paths."""
+    workflow = _doubling_alias_dag_workflow(18, uses_base=True)
+    documents = list(yaml.compose_all(workflow, Loader=yaml.SafeLoader))
+    assert len(documents) == 1
+    state = guard._AliasGraphState()
+    result = guard._collect_yaml_use_occurrences(documents[0], state)
+    distinct_source_uses_lines = 2  # the jobs step and the shared l0 leaf
+    assert len(result.occurrences) <= distinct_source_uses_lines, (
+        len(result.occurrences)
+    )
+    total_materialized = sum(
+        len(entry.occurrences) for entry in state.done.values()
+    )
+    assert total_materialized <= distinct_source_uses_lines * len(state.done), (
+        total_materialized
+    )
+    assert len(state.done) <= 64  # 29 unique nodes on main; O(depth), O(paths) never
+
+
+def test_guard_fails_closed_on_uses_bearing_alias_dag_with_bounded_diagnostics(
+    tmp_path: Path,
+) -> None:
+    """End-to-end F6: the guard must reject the uses-bearing doubling DAG
+    with exit 1 and a bounded, deterministic diagnostic list anchored at the
+    shared ``uses`` source line — one alias-shared diagnostic, not one per
+    DAG level, and never runaway output."""
+    workflow = _doubling_alias_dag_workflow(18, uses_base=True)
+    workflows = _write(tmp_path, "fanout-uses.yml", workflow)
+    violations = guard.check_workflow_file(workflows / "fanout-uses.yml")
+    assert guard.main([str(workflows)]) == 1
+    path = workflows / "fanout-uses.yml"
+    shared = [v for v in violations if "shared through a YAML alias" in v]
+    assert shared, violations
+    assert all(v.startswith(f"{path}:9:") for v in shared), violations
+    assert len(violations) <= 2, violations
+
+
+def test_guard_bounds_non_uses_alias_dag_materialization(
+    tmp_path: Path,
+) -> None:
+    """Positive control: the same doubling DAG with a non-``uses`` leaf stays
+    bounded and clean — legal repeated aliases must not be penalized."""
+    workflow = _doubling_alias_dag_workflow(18, uses_base=False)
+    documents = list(yaml.compose_all(workflow, Loader=yaml.SafeLoader))
+    state = guard._AliasGraphState()
+    result = guard._collect_yaml_use_occurrences(documents[0], state)
+    assert len(result.occurrences) == 1  # only the ordinary jobs step
+    assert (
+        sum(len(entry.occurrences) for entry in state.done.values())
+        <= len(state.done)
+    )
+    assert not state.graph_violations
+    workflows = _write(tmp_path, "fanout-benign.yml", workflow)
+    assert guard.main([str(workflows)]) == 0
+
+
+def test_guard_reports_each_shared_alias_binding_violation_once(
+    tmp_path: Path,
+) -> None:
+    """F6 diagnostic determinism: a shared alias step whose pinned reference
+    lacks a version comment must produce exactly one version-comment
+    diagnostic for its one source line, not one per materialized duplicate
+    occurrence (two on main@6aa29c9)."""
+    workflow = """\
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - &shared
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - *shared
+"""
+    workflows = _write(tmp_path, "alias-shared-unannotated.yml", workflow)
+    violations = guard.check_workflow_file(
+        workflows / "alias-shared-unannotated.yml"
+    )
+    assert guard.main([str(workflows)]) == 1
+    assert (
+        len([v for v in violations if "version comment" in v]) == 1
+    ), violations
+    assert (
+        len([v for v in violations if "shared through a YAML alias" in v]) == 1
+    ), violations
+
+
+def test_guard_fails_on_shared_uses_bearing_step_sequence(tmp_path: Path) -> None:
+    """Nested sharing: an anchored whole ``steps`` sequence containing a
+    pinned step, referenced by a second job, shares the ``uses`` occurrence;
+    the alias diagnostic must anchor at the shared step's source line."""
+    workflow = """\
+name: CI
+jobs:
+  first:
+    runs-on: ubuntu-latest
+    steps: &steps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  second:
+    runs-on: ubuntu-latest
+    steps: *steps
+"""
+    workflows = _write(tmp_path, "alias-steps.yml", workflow)
+    violations = guard.check_workflow_file(workflows / "alias-steps.yml")
+    assert guard.main([str(workflows)]) == 1
+    path = workflows / "alias-steps.yml"
+    shared = [v for v in violations if "shared through a YAML alias" in v]
+    assert shared, violations
+    assert all(v.startswith(f"{path}:6:") for v in shared), violations
+
+
+def test_guard_fails_on_cyclic_steps_alias_containing_uses(tmp_path: Path) -> None:
+    """A ``steps`` sequence referencing itself composes into a cycle that
+    also contains a ``uses`` key; the guard must fail closed with the cyclic
+    diagnostic at the sequence's source line while the in-sequence pinned
+    occurrence stays deterministic."""
+    workflow = """\
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps: &steps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *steps
+"""
+    workflows = _write(tmp_path, "cycle-steps.yml", workflow)
+    violations = guard.check_workflow_file(workflows / "cycle-steps.yml")
+    assert guard.main([str(workflows)]) == 1
+    path = workflows / "cycle-steps.yml"
+    cyclic = [v for v in violations if "cyclic" in v]
+    assert cyclic, violations
+    assert any(v.startswith(f"{path}:5:") for v in cyclic), violations
