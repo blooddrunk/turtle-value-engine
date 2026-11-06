@@ -9,11 +9,16 @@ suffixed (``# v7.1abc``) annotations are rejected. Local composite actions
 (``./...``) are out of scope; ``docker://`` references cannot be commit-pinned
 and are rejected explicitly.
 
-References are extracted both from the parsed YAML (the authoritative view) and
-from a raw line scan (the only place comments survive); the two views are
-compared as multisets of occurrences so a repeated reference cannot cancel a
-scanner-invisible duplicate (for example a quoted ``'uses':`` key), and any
-divergence in value or count fails closed instead of being guessed away.
+Every *effective* YAML ``uses`` occurrence (located through PyYAML node marks,
+the authoritative view) is bound to its own source line and validated there: a
+reference and its ``# vX.Y.Z`` annotation are only accepted when one plain
+``uses: <ref> # vX.Y.Z`` scan line carries exactly that occurrence's value at
+exactly that occurrence's line. Scanned ``uses:`` text that is no real
+occurrence (run-block decoys, unusual encodings) and real occurrences that are
+invisible to the line scanner (quoted ``'uses':`` keys, block scalars,
+multi-line values, aliases) each fail closed, so an annotated decoy line can
+never authorize a different actual action occurrence. Duplicate ``uses`` keys
+in one mapping are rejected as an ambiguous encoding.
 """
 
 from __future__ import annotations
@@ -21,7 +26,6 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -34,16 +38,53 @@ VERSION_COMMENT_PATTERN = re.compile(r"#\s*v\d+\.\d+\.\d+\s*$")
 USES_LINE_PATTERN = re.compile(r"^\s*(?:-\s+)?uses:\s*(?P<ref>[^\s#]+)(?P<rest>.*)$")
 BLOCK_SCALAR_INDICATOR = re.compile(r"^[|>][+-]?$")
 
+# Value reported for a `uses` mapping whose value is not a plain YAML scalar
+# (alias or collection). The spaces guarantee it can never equal a raw scan
+# token, so such occurrences always fail closed as unbindable.
+NONSCALAR_USES_VALUE = "<non-scalar 'uses:' value>"
 
-def _collect_yaml_uses(node: Any, found: Counter[str]) -> None:
-    if isinstance(node, dict):
-        for key, value in node.items():
-            if key == "uses" and isinstance(value, str):
-                found[value.strip().strip("'\"")] += 1
-            _collect_yaml_uses(value, found)
-    elif isinstance(node, list):
-        for item in node:
-            _collect_yaml_uses(item, found)
+
+def _collect_yaml_use_occurrences(
+    node: Any,
+) -> tuple[list[tuple[int, str, int]], list[int]]:
+    """Walk the composed YAML node tree and return every effective ``uses``
+    occurrence as ``(key_line, value, value_line)`` (1-based lines, value
+    normalized like the raw scan) plus the key lines of mappings that declare
+    ``uses`` more than once."""
+    occurrences: list[tuple[int, str, int]] = []
+    duplicate_key_lines: list[int] = []
+    if isinstance(node, yaml.MappingNode):
+        uses_pairs = [
+            (key_node, value_node)
+            for key_node, value_node in node.value
+            if isinstance(key_node, yaml.ScalarNode) and key_node.value == "uses"
+        ]
+        if len(uses_pairs) > 1:
+            duplicate_key_lines.append(uses_pairs[1][0].start_mark.line + 1)
+        for key_node, value_node in uses_pairs:
+            raw_value = value_node.value if isinstance(value_node, yaml.ScalarNode) else None
+            value = (
+                raw_value.strip().strip("'\"")
+                if isinstance(raw_value, str)
+                else NONSCALAR_USES_VALUE
+            )
+            occurrences.append(
+                (
+                    key_node.start_mark.line + 1,
+                    value,
+                    value_node.start_mark.line + 1,
+                )
+            )
+        for _key_node, value_node in node.value:
+            child_occurrences, child_duplicates = _collect_yaml_use_occurrences(value_node)
+            occurrences.extend(child_occurrences)
+            duplicate_key_lines.extend(child_duplicates)
+    elif isinstance(node, yaml.SequenceNode):
+        for item in node.value:
+            child_occurrences, child_duplicates = _collect_yaml_use_occurrences(item)
+            occurrences.extend(child_occurrences)
+            duplicate_key_lines.extend(child_duplicates)
+    return occurrences, duplicate_key_lines
 
 
 def _scan_raw_uses(text: str) -> list[tuple[int, str, str]]:
@@ -63,7 +104,7 @@ def _scan_raw_uses(text: str) -> list[tuple[int, str, str]]:
 
 
 def check_workflow_file(path: Path) -> list[str]:
-    """Return a sorted list of violation messages for one workflow file."""
+    """Return a deterministic list of violation messages for one workflow file."""
     violations: list[str] = []
     try:
         text = path.read_text(encoding="utf-8")
@@ -71,58 +112,72 @@ def check_workflow_file(path: Path) -> list[str]:
         return [f"{path}: unreadable workflow file: {error}"]
 
     try:
-        document = yaml.safe_load(text)
+        documents = list(yaml.compose_all(text, Loader=yaml.SafeLoader))
     except yaml.YAMLError as error:
         return [f"{path}: unparseable workflow YAML: {error}"]
-    if not isinstance(document, dict):
+    if len(documents) != 1 or not isinstance(documents[0], yaml.MappingNode):
         return [f"{path}: workflow document is not a YAML mapping"]
 
-    yaml_uses: Counter[str] = Counter()
-    _collect_yaml_uses(document, yaml_uses)
+    occurrences, duplicate_key_lines = _collect_yaml_use_occurrences(documents[0])
     raw_uses = _scan_raw_uses(text)
-    raw_refs: Counter[str] = Counter(ref for _, ref, _ in raw_uses)
+    raw_by_line = {lineno: (ref, rest) for lineno, ref, rest in raw_uses}
 
-    # Multiset comparison: Counter subtraction keeps only positive deltas, so a
-    # scanner-invisible duplicate of an already-scanned reference (quoted
-    # 'uses': key, second run-block echo of the same ref) can no longer cancel
-    # out against the set-based view.
-    only_raw = sorted((raw_refs - yaml_uses).elements())
-    only_yaml = sorted((yaml_uses - raw_refs).elements())
-    if only_raw:
+    for line in duplicate_key_lines:
         violations.append(
-            f"{path}: 'uses:' text invisible to YAML keys (run-block text or "
-            f"unusual encoding): {only_raw}"
-        )
-    if only_yaml:
-        violations.append(
-            f"{path}: 'uses:' values invisible to the line scanner "
-            f"(multi-line or quoted encoding): {only_yaml}"
+            f"{path}:{line}: duplicate 'uses' key in one mapping "
+            "(ambiguous encoding)"
         )
 
-    for lineno, ref, rest in raw_uses:
+    # Occurrence-level binding: a real `uses` occurrence is only authorized by
+    # the single plain scan line at its own value line carrying exactly its
+    # own value. Anything else (quoted keys, block scalars, multi-line values,
+    # aliases, decoy balancing) fails closed instead of being guessed away.
+    bound_lines: set[int] = set()
+    for key_line, value, value_line in occurrences:
+        entry = raw_by_line.get(value_line)
+        if entry is None or entry[0] != value:
+            violations.append(
+                f"{path}:{key_line}: 'uses:' value {value!r} invisible to the "
+                "line scanner (multi-line or quoted encoding); every action "
+                "reference must be one plain 'uses: <ref> # vX.Y.Z' source line"
+            )
+            continue
+        bound_lines.add(value_line)
+        ref, rest = entry
         if ref.startswith("./"):
             continue
         if ref.startswith("docker://"):
             violations.append(
-                f"{path}:{lineno}: docker:// reference {ref!r} cannot be commit-pinned"
+                f"{path}:{value_line}: docker:// reference {ref!r} cannot be commit-pinned"
             )
             continue
         _repo, separator, commit = ref.partition("@")
         if not separator:
             violations.append(
-                f"{path}:{lineno}: external reference {ref!r} carries no '@ref'"
+                f"{path}:{value_line}: external reference {ref!r} carries no '@ref'"
             )
             continue
         if not COMMIT_SHA_PATTERN.match(commit):
             violations.append(
-                f"{path}:{lineno}: external reference {ref!r} is not pinned to a "
+                f"{path}:{value_line}: external reference {ref!r} is not pinned to a "
                 "full 40-character commit SHA"
             )
         if VERSION_COMMENT_PATTERN.search(rest) is None:
             violations.append(
-                f"{path}:{lineno}: pinned reference {ref!r} lacks a '# vX.Y.Z' "
+                f"{path}:{value_line}: pinned reference {ref!r} lacks a '# vX.Y.Z' "
                 "version comment"
             )
+
+    # Scanned `uses:` text that is not any real occurrence at that line is
+    # run-block text, a decoy line or an unusual encoding; it can never
+    # authorize a different actual occurrence.
+    for lineno, ref, _rest in raw_uses:
+        if lineno in bound_lines:
+            continue
+        violations.append(
+            f"{path}:{lineno}: 'uses:' text invisible to YAML keys "
+            f"(run-block text or unusual encoding): {ref!r}"
+        )
     return violations
 
 

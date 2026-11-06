@@ -395,3 +395,105 @@ def test_guard_accepts_no_space_version_comment(tmp_path: Path) -> None:
         ),
     )
     assert guard.main([str(workflows)]) == 0
+
+
+# --- Issue #47 F3: a decoy line cannot authorize a different real occurrence ---
+
+
+def test_guard_fails_on_decoy_annotating_quoted_key_real_action(
+    tmp_path: Path,
+) -> None:
+    """The actual action step is a quoted ``'uses':`` key without a version
+    comment; an annotated ``uses:`` decoy line inside a ``run: |`` block
+    repeats the same pinned reference. Value-based Counters balance, but the
+    decoy must not authorize the real occurrence: the guard must fail closed
+    on both the scanner-invisible real line and the YAML-invisible decoy
+    (Issue #47 F3, fixture A)."""
+    workflow = """\
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: real action
+        'uses': actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+      - name: decoy line, not an action
+        run: |
+          uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+"""
+    workflows = _write(tmp_path, "decoy-quoted.yml", workflow)
+    violations = guard.check_workflow_file(workflows / "decoy-quoted.yml")
+    assert guard.main([str(workflows)]) == 1
+    assert any("invisible to the line scanner" in v for v in violations), violations
+    assert any("invisible to YAML keys" in v for v in violations), violations
+
+
+def test_guard_fails_on_decoy_annotating_folded_scalar_real_action(
+    tmp_path: Path,
+) -> None:
+    """The actual action step is a folded scalar whose effective value cannot
+    carry a same-line annotation; an annotated decoy line inside a ``run: |``
+    block repeats the same pinned reference. The decoy must not authorize the
+    folded occurrence: the guard must fail closed on both (Issue #47 F3,
+    fixture B)."""
+    workflow = """\
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: real folded action
+        uses: >-
+          actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+      - name: decoy line, not an action
+        run: |
+          uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+"""
+    workflows = _write(tmp_path, "decoy-folded.yml", workflow)
+    violations = guard.check_workflow_file(workflows / "decoy-folded.yml")
+    assert guard.main([str(workflows)]) == 1
+    assert any("invisible to the line scanner" in v for v in violations), violations
+    assert any("invisible to YAML keys" in v for v in violations), violations
+
+
+def test_guard_accepts_distinct_annotated_references(tmp_path: Path) -> None:
+    """Positive control: several genuinely distinct external actions, each an
+    ordinary single-line ``uses:`` carrying its own pinned SHA and complete
+    same-line version comment, stays clean under occurrence-level binding."""
+    workflow = """\
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+"""
+    workflows = _write(tmp_path, "distinct.yml", workflow)
+    assert guard.main([str(workflows)]) == 0
+
+
+def test_guard_fails_on_duplicate_uses_key_in_one_step(tmp_path: Path) -> None:
+    """Two ``uses`` keys inside the same step mapping are an ambiguous
+    encoding (PyYAML keeps only the last): the guard must fail closed instead
+    of letting either occurrence authorize the other."""
+    workflow = """\
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ambiguous step
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+"""
+    workflows = _write(tmp_path, "dup-key.yml", workflow)
+    violations = guard.check_workflow_file(workflows / "dup-key.yml")
+    assert guard.main([str(workflows)]) == 1
+    assert len(violations) >= 1
+    joined = "\n".join(violations)
+    assert "uses" in joined
