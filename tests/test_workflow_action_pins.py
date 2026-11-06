@@ -251,3 +251,147 @@ def test_guard_fails_when_no_workflow_files_exist(tmp_path: Path) -> None:
 
 def test_guard_fails_on_missing_path(tmp_path: Path) -> None:
     assert guard.main([str(tmp_path / "does-not-exist")]) == 2
+
+
+# --- Issue #45 F1: duplicate refs must not collapse the YAML-vs-raw view ---
+
+
+def test_guard_fails_on_duplicate_quoted_key_hiding_unannotated_occurrence(
+    tmp_path: Path,
+) -> None:
+    """One annotated plain ``uses:`` plus one quoted ``'uses':`` with the same
+    pinned SHA and no version comment: PyYAML parses both action steps but the
+    raw line scanner only sees the plain key, so occurrence counts diverge and
+    the untraceable second occurrence must fail closed (Issue #45 F1)."""
+    workflow = """\
+name: Guard Repro
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: annotated
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: missing annotation, quoted key
+        'uses': actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+"""
+    workflows = _write(tmp_path, "dup-quoted.yml", workflow)
+    violations = guard.check_workflow_file(workflows / "dup-quoted.yml")
+    assert guard.main([str(workflows)]) == 1
+    assert any("invisible to the line scanner" in violation for violation in violations)
+
+
+def test_guard_accepts_repeated_pinned_references_with_annotations(
+    tmp_path: Path,
+) -> None:
+    """Positive control: the same pinned SHA declared twice as ordinary
+    ``uses:`` lines, each carrying its own complete version comment, stays
+    clean; only a scanner-invisible encoding of a repeated reference fails."""
+    workflow = """\
+name: Guard Repro Repeated
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: first use
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: second use
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+"""
+    workflows = _write(tmp_path, "repeated.yml", workflow)
+    assert guard.main([str(workflows)]) == 0
+
+
+def test_guard_fails_on_duplicate_ref_hidden_in_run_block(tmp_path: Path) -> None:
+    """A run-block ``uses:`` line repeating a legitimately pinned reference
+    used to cancel out against the set-based comparison; the multiset view
+    must report the scanner-only occurrence (Issue #45 F1 variant)."""
+    workflow = """\
+name: CI
+on:
+  push:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pinned
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Script echoing action text
+        run: |
+          set -e
+          uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+          echo "$uses"
+"""
+    workflows = _write(tmp_path, "dup-run-block.yml", workflow)
+    violations = guard.check_workflow_file(workflows / "dup-run-block.yml")
+    assert guard.main([str(workflows)]) == 1
+    assert any("invisible to YAML keys" in violation for violation in violations)
+
+
+# --- Issue #45 F2: version annotations must be complete vX.Y.Z ---
+
+
+def _annotated_workflow(reference: str, comment: str) -> str:
+    return PINNED_STEP_TEMPLATE.format(reference=f"{reference} {comment}")
+
+
+def test_guard_fails_on_truncated_two_component_version_comment(
+    tmp_path: Path,
+) -> None:
+    workflows = _write(
+        tmp_path, "truncated.yml",
+        _annotated_workflow(
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", "# v7.1"
+        ),
+    )
+    violations = guard.check_workflow_file(workflows / "truncated.yml")
+    assert guard.main([str(workflows)]) == 1
+    assert "lacks a '# vX.Y.Z' version comment" in violations[0]
+
+
+def test_guard_fails_on_malformed_version_comment_suffix(tmp_path: Path) -> None:
+    workflows = _write(
+        tmp_path, "malformed.yml",
+        _annotated_workflow(
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", "# v7.1abc"
+        ),
+    )
+    violations = guard.check_workflow_file(workflows / "malformed.yml")
+    assert guard.main([str(workflows)]) == 1
+    assert "lacks a '# vX.Y.Z' version comment" in violations[0]
+
+
+def test_guard_fails_on_four_component_version_comment(tmp_path: Path) -> None:
+    workflows = _write(
+        tmp_path, "fourcomp.yml",
+        _annotated_workflow(
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", "# v7.0.1.4"
+        ),
+    )
+    violations = guard.check_workflow_file(workflows / "fourcomp.yml")
+    assert guard.main([str(workflows)]) == 1
+    assert "lacks a '# vX.Y.Z' version comment" in violations[0]
+
+
+def test_guard_fails_on_version_comment_with_trailing_text(tmp_path: Path) -> None:
+    workflows = _write(
+        tmp_path, "trailing.yml",
+        _annotated_workflow(
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "# v7.0.1 pinned upstream tag",
+        ),
+    )
+    violations = guard.check_workflow_file(workflows / "trailing.yml")
+    assert guard.main([str(workflows)]) == 1
+    assert "lacks a '# vX.Y.Z' version comment" in violations[0]
+
+
+def test_guard_accepts_no_space_version_comment(tmp_path: Path) -> None:
+    """Positive control: a compact ``#v7.0.1`` annotation with no space after
+    the hash remains supported valid syntax."""
+    workflows = _write(
+        tmp_path, "compact.yml",
+        _annotated_workflow(
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1", "#v7.0.1"
+        ),
+    )
+    assert guard.main([str(workflows)]) == 0

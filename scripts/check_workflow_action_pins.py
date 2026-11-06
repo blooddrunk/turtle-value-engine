@@ -3,12 +3,17 @@
 Every external ``uses:`` reference in the repository's workflow files must point
 at an immutable full 40-character commit SHA and carry a trailing ``# vX.Y.Z``
 version comment so the pinned commit stays traceable to an upstream release.
-Local composite actions (``./...``) are out of scope; ``docker://`` references
-cannot be commit-pinned and are rejected explicitly.
+The annotation must be the complete three-component ``vX.Y.Z`` form anchored at
+the end of the line; truncated (``# v7.1``), over-long (``# v7.0.1.4``) or
+suffixed (``# v7.1abc``) annotations are rejected. Local composite actions
+(``./...``) are out of scope; ``docker://`` references cannot be commit-pinned
+and are rejected explicitly.
 
-References are extracted both from the parsed YAML (the authoritative set) and
-from a raw line scan (the only place comments survive); any divergence between
-the two views fails closed instead of being guessed away.
+References are extracted both from the parsed YAML (the authoritative view) and
+from a raw line scan (the only place comments survive); the two views are
+compared as multisets of occurrences so a repeated reference cannot cancel a
+scanner-invisible duplicate (for example a quoted ``'uses':`` key), and any
+divergence in value or count fails closed instead of being guessed away.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -24,16 +30,16 @@ import yaml
 DEFAULT_TARGET = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
 COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
-VERSION_COMMENT_PATTERN = re.compile(r"#\s*v\d+\.\d+")
+VERSION_COMMENT_PATTERN = re.compile(r"#\s*v\d+\.\d+\.\d+\s*$")
 USES_LINE_PATTERN = re.compile(r"^\s*(?:-\s+)?uses:\s*(?P<ref>[^\s#]+)(?P<rest>.*)$")
 BLOCK_SCALAR_INDICATOR = re.compile(r"^[|>][+-]?$")
 
 
-def _collect_yaml_uses(node: Any, found: set[str]) -> None:
+def _collect_yaml_uses(node: Any, found: Counter[str]) -> None:
     if isinstance(node, dict):
         for key, value in node.items():
             if key == "uses" and isinstance(value, str):
-                found.add(value.strip().strip("'\""))
+                found[value.strip().strip("'\"")] += 1
             _collect_yaml_uses(value, found)
     elif isinstance(node, list):
         for item in node:
@@ -71,13 +77,17 @@ def check_workflow_file(path: Path) -> list[str]:
     if not isinstance(document, dict):
         return [f"{path}: workflow document is not a YAML mapping"]
 
-    yaml_uses: set[str] = set()
+    yaml_uses: Counter[str] = Counter()
     _collect_yaml_uses(document, yaml_uses)
     raw_uses = _scan_raw_uses(text)
-    raw_refs = {ref for _, ref, _ in raw_uses}
+    raw_refs: Counter[str] = Counter(ref for _, ref, _ in raw_uses)
 
-    only_raw = sorted(raw_refs - yaml_uses)
-    only_yaml = sorted(yaml_uses - raw_refs)
+    # Multiset comparison: Counter subtraction keeps only positive deltas, so a
+    # scanner-invisible duplicate of an already-scanned reference (quoted
+    # 'uses': key, second run-block echo of the same ref) can no longer cancel
+    # out against the set-based view.
+    only_raw = sorted((raw_refs - yaml_uses).elements())
+    only_yaml = sorted((yaml_uses - raw_refs).elements())
     if only_raw:
         violations.append(
             f"{path}: 'uses:' text invisible to YAML keys (run-block text or "
