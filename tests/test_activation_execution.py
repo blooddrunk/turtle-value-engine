@@ -1271,11 +1271,38 @@ def test_concurrent_apply_one_wins_one_busy(tmp_path, capsys):
     first_out, _ = first.communicate(timeout=180)
     second_out, _ = second.communicate(timeout=180)
     codes = sorted([first.returncode, second.returncode])
-    assert codes == [0, 3], (first.returncode, second.returncode, first_out, second_out)
-    winner = json.loads(first_out if first.returncode == 0 else second_out)
-    loser_out = second_out if first.returncode == 0 else first_out
-    assert winner["status"] in ("ACTIVATED", "COMPLETED_ALREADY")
-    assert "ACTIVATION_BUSY" in loser_out
+    assert codes in ([0, 3], [0, 0]), (
+        first.returncode,
+        second.returncode,
+        first_out,
+        second_out,
+    )
+
+    if 3 in codes:
+        # The applies truly overlapped: exactly one winner, one busy loser.
+        # (The busy classification itself is proven deterministically by
+        # test_f2_real_two_process_contention_still_zero_or_three holding
+        # the real lock file; this branch is the live cross-process race.)
+        winner = json.loads(first_out if first.returncode == 0 else second_out)
+        loser_out = second_out if first.returncode == 0 else first_out
+        assert winner["status"] in ("ACTIVATED", "COMPLETED_ALREADY")
+        assert "ACTIVATION_BUSY" in loser_out
+    else:
+        # Under heavy load (for example parallel CI workers) the first apply
+        # can complete before the second process reaches its lease, so the
+        # second legitimately reports idempotent completion instead of busy.
+        # The exactly-once invariant still holds: one ACTIVATED, one
+        # COMPLETED_ALREADY, never two activations and never an error.
+        statuses = sorted(
+            [json.loads(first_out)["status"], json.loads(second_out)["status"]]
+        )
+        assert statuses == ["ACTIVATED", "COMPLETED_ALREADY"], (
+            first.returncode,
+            second.returncode,
+            first_out,
+            second_out,
+        )
+
     assert env.config_path.read_bytes() == _activated_bytes()
 
 

@@ -60,9 +60,9 @@ from tests.test_owner_readiness_summary_r1_probes import (
     _KNOWN_PLACEHOLDERS,
     _PLACEHOLDER_SOURCES,
     _READONLY_SUBCOMMANDS,
-    _build_all_journeys,
     _executable_hints,
     _run_hint_with_stub,
+    _shared_all_journeys,
 )
 from tests.test_owner_readiness_summary_r2_probes import (
     _assert_tail_is_a_canonical_command_line,
@@ -551,7 +551,7 @@ def test_all_journeys_keep_write_commands_prose_and_readonly_tails(
     appear as executable hints, and every displayed tail names only a
     read-only subcommand carrying no write/apply option."""
 
-    journeys = _build_all_journeys(capsys, tmp_path)
+    journeys = _shared_all_journeys(capsys, tmp_path)
     for name, payload in journeys.items():
         steps = payload["next_steps_zh"]
         for writer in ("plan-activation", "decision-dossier"):
