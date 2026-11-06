@@ -28,12 +28,21 @@ rejected with a controlled ``path:line`` diagnostic (never an uncaught
 ``RecursionError``), and a ``uses``-bearing subtree reached through an alias is
 rejected because its single annotated source line would have to authorize
 multiple effective occurrences. Anchors whose subtree contains no ``uses`` key
-are harmless and stay clean, and the memoized traversal stays linear in unique
-nodes plus alias references, so alias fan-out cannot cause exponential work.
-A memoized alias re-reference additionally never re-expands the shared
-subtree's occurrences into the caller's list, so the materialized occurrence
-multiset and every diagnostic stay bounded by unique nodes and distinct
-source ``uses`` lines instead of root-to-node paths.
+are harmless and stay clean.
+
+The traversal stays linear in unique YAML nodes, alias references and distinct
+source ``uses`` lines: every distinct source occurrence is appended exactly
+once — at the fresh visit of the mapping that owns it — to a document-level
+accumulator, the per-node memo caches only that node's *own* occurrences plus
+minimal ``has_uses``/first-``uses``-line metadata, and a completed subtree is
+returned as an O(1) window over the accumulator instead of a copied descendant
+tuple, so neither work nor memory grows with root-to-node paths. Nesting
+deeper than ``MAX_SUPPORTED_NESTING_DEPTH`` collection levels (far above any
+real workflow) is refused with one deterministic ``path:line`` diagnostic
+before that branch is traversed, and a ``RecursionError`` raised by the YAML
+parser or the collector itself is converted into one controlled fail-closed
+diagnostic with exit 1 — an interrupted verification never becomes an
+accepted workflow.
 """
 
 from __future__ import annotations
@@ -42,6 +51,7 @@ import argparse
 import re
 import sys
 from dataclasses import dataclass, field
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
@@ -54,23 +64,58 @@ VERSION_COMMENT_PATTERN = re.compile(r"#\s*v\d+\.\d+\.\d+\s*$")
 USES_LINE_PATTERN = re.compile(r"^\s*(?:-\s+)?uses:\s*(?P<ref>[^\s#]+)(?P<rest>.*)$")
 BLOCK_SCALAR_INDICATOR = re.compile(r"^[|>][+-]?$")
 
+# Deepest supported chain of nested YAML collections (mappings/sequences).
+# The checked-in workflows nest at most ~10 collection levels; the guard
+# refuses anything deeper before traversing it, keeping collector recursion
+# bounded far below Python's own limit (the recursive PyYAML parser already
+# dies near ~490 nesting levels under the default limit of 1000 frames).
+MAX_SUPPORTED_NESTING_DEPTH = 100
+
 # Value reported for a `uses` mapping whose value is not a plain YAML scalar
 # (alias or collection). The spaces guarantee it can never equal a raw scan
 # token, so such occurrences always fail closed as unbindable.
 NONSCALAR_USES_VALUE = "<non-scalar 'uses:' value>"
 
 
+class _OccurrenceSpan:
+    """O(1) lazy window over the document-level occurrence accumulator.
+
+    A fresh collector completion returns its subtree's occurrences as such a
+    window instead of copying them, so every caller that only needs the size
+    or one iteration of a subtree's occurrences stays linear in the unique
+    source occurrences; the accumulator itself is never mutated after the
+    owning traversal finishes."""
+
+    __slots__ = ("_entries", "_start", "_stop")
+
+    def __init__(
+        self, entries: list[tuple[int, str, int]], start: int, stop: int
+    ) -> None:
+        self._entries = entries
+        self._start = start
+        self._stop = stop
+
+    def __len__(self) -> int:
+        return self._stop - self._start
+
+    def __iter__(self):
+        return islice(self._entries, self._start, self._stop)
+
+
 @dataclass(frozen=True)
 class _SubtreeUses:
-    """``uses`` occurrences collected inside one composed YAML subtree, plus
-    whether the subtree contains any ``uses`` key at all (shared-alias
-    detection must fire even when the occurrences themselves fail line
-    binding) and the subtree's first ``uses`` source line. ``first_uses_line``
-    is derived from the node structure during the fresh traversal, so the
-    shared-alias diagnostic anchor stays exact even when a compact
-    (non-re-expanded) occurrence list no longer carries every entry."""
+    """``uses`` occurrence data for one composed YAML subtree: whether the
+    subtree contains any ``uses`` key at all (shared-alias detection must
+    fire even when the occurrences themselves fail line binding), the
+    subtree's first ``uses`` source line (derived from node structure during
+    the fresh traversal, so the shared-alias diagnostic anchor stays exact),
+    and the subtree's occurrences. The memoized ``done`` entry stores only
+    the node's *own* occurrences, while a fresh completion returns an O(1)
+    :class:`_OccurrenceSpan` window over the document-level accumulator, so
+    cached storage stays linear in unique nodes and distinct source ``uses``
+    lines instead of growing with root-to-node paths."""
 
-    occurrences: tuple[tuple[int, str, int], ...]
+    occurrences: tuple[tuple[int, str, int], ...] | _OccurrenceSpan
     has_uses: bool
     first_uses_line: int | None = None
 
@@ -81,11 +126,12 @@ class _AliasGraphState:
 
     ``active`` holds node ids on the current depth-first path (a node reached
     while active is a back-edge: a cyclic alias graph). ``done`` memoizes each
-    node's subtree result, which both bounds alias fan-out DAGs to linear work
-    and identifies a completed node reached again as an alias re-reference.
-    ``alias_ref_result`` is set at every collector return so the caller can
-    tell a fresh child traversal from a memoized alias re-reference and never
-    re-expand a shared subtree's occurrences into its own list."""
+    node's own-occurrence result, which both bounds alias fan-out DAGs to
+    linear work and identifies a completed node reached again as an alias
+    re-reference. ``occurrences`` is the document-level accumulator: every
+    distinct source ``uses`` occurrence is appended exactly once, at the
+    fresh visit of the mapping that owns it, in deterministic traversal
+    order; callers never copy descendant lists."""
 
     active: set[int] = field(default_factory=set)
     done: dict[int, _SubtreeUses] = field(default_factory=dict)
@@ -94,10 +140,7 @@ class _AliasGraphState:
     reported_violations: set[tuple[int, str]] = field(default_factory=set)
     duplicate_key_lines: list[int] = field(default_factory=list)
     graph_violations: list[tuple[int, str]] = field(default_factory=list)
-    # True when the most recent collector return was a memoized alias
-    # re-reference; callers read it immediately after each child call,
-    # before any other call can overwrite it.
-    alias_ref_result: bool = False
+    occurrences: list[tuple[int, str, int]] = field(default_factory=list)
 
 
 def _record_graph_violation(
@@ -118,10 +161,11 @@ def _record_graph_violation(
 def _collect_yaml_use_occurrences(
     node: Any,
     _state: _AliasGraphState | None = None,
+    _depth: int = 1,
 ) -> _SubtreeUses:
-    """Walk the composed YAML node graph and return every effective ``uses``
-    occurrence in this subtree as ``(key_line, value, value_line)`` (1-based
-    lines, value normalized like the raw scan).
+    """Walk the composed YAML node graph and return the ``uses`` occurrences
+    of this subtree as ``(key_line, value, value_line)`` (1-based lines,
+    value normalized like the raw scan).
 
     Graph safety: each node object is processed exactly once. A node reached
     while still being processed is a cyclic alias graph; a node reached again
@@ -130,15 +174,19 @@ def _collect_yaml_use_occurrences(
     reported through ``_state.graph_violations`` as controlled diagnostics by
     the caller, never as unbounded recursion.
 
-    Occurrences are additionally never re-expanded through alias
-    re-references: a caller receiving a memoized result (signalled through
-    ``_state.alias_ref_result``, set at every return) keeps the child's
-    ``has_uses`` flag but does not copy its occurrences again, so a fan-out
-    DAG materializes at most one entry per distinct source ``uses`` key per
-    node instead of one per root-to-node path. The skipped entries are exact
-    duplicates of the defining reference's occurrences and their subtree
-    sharing is already a reported violation, so no binding diagnostic is
-    lost."""
+    Resource envelope: every distinct source ``uses`` occurrence is appended
+    exactly once — at the fresh visit of the mapping that owns it — to the
+    document-level ``_state.occurrences`` accumulator, and no caller ever
+    copies a descendant list, so both work and storage stay linear in unique
+    nodes, alias references and distinct source ``uses`` lines. ``done``
+    caches only the node's own occurrences plus minimal metadata; a fresh
+    completion returns an O(1) :class:`_OccurrenceSpan` window covering
+    exactly this subtree's appends. A collection nested deeper than
+    :data:`MAX_SUPPORTED_NESTING_DEPTH` levels is refused with one
+    deterministic ``path:line`` diagnostic before that branch is traversed,
+    and the caller converts any residual ``RecursionError`` into a
+    fail-closed diagnostic, so deep input can never crash the guard nor pass
+    with partial verification."""
     if _state is None:
         _state = _AliasGraphState()
     node_id = id(node)
@@ -156,7 +204,6 @@ def _collect_yaml_use_occurrences(
                 "annotated source line cannot authorize multiple effective "
                 "action references",
             )
-        _state.alias_ref_result = True
         return completed
     if node_id in _state.active:
         if node_id not in _state.reported_cycles:
@@ -167,10 +214,21 @@ def _collect_yaml_use_occurrences(
                 "cyclic YAML alias graph (an anchor is referenced inside "
                 "its own definition); refusing to traverse",
             )
-        _state.alias_ref_result = False
+        return _SubtreeUses((), False)
+    if (
+        _depth > MAX_SUPPORTED_NESTING_DEPTH
+        and isinstance(node, (yaml.MappingNode, yaml.SequenceNode))
+    ):
+        _record_graph_violation(
+            _state,
+            node.start_mark.line + 1,
+            "workflow YAML nesting exceeds the supported depth limit "
+            f"({MAX_SUPPORTED_NESTING_DEPTH}); refusing to traverse",
+        )
         return _SubtreeUses((), False)
     _state.active.add(node_id)
-    occurrences: list[tuple[int, str, int]] = []
+    own_occurrences: list[tuple[int, str, int]] = []
+    span_start = len(_state.occurrences)
     has_uses = False
     first_uses_line: int | None = None
     if isinstance(node, yaml.MappingNode):
@@ -191,17 +249,15 @@ def _collect_yaml_use_occurrences(
                 if isinstance(raw_value, str)
                 else NONSCALAR_USES_VALUE
             )
-            occurrences.append(
-                (
-                    key_node.start_mark.line + 1,
-                    value,
-                    value_node.start_mark.line + 1,
-                )
+            occurrence = (
+                key_node.start_mark.line + 1,
+                value,
+                value_node.start_mark.line + 1,
             )
+            own_occurrences.append(occurrence)
+            _state.occurrences.append(occurrence)
         for _key_node, value_node in node.value:
-            child = _collect_yaml_use_occurrences(value_node, _state)
-            if not _state.alias_ref_result:
-                occurrences.extend(child.occurrences)
+            child = _collect_yaml_use_occurrences(value_node, _state, _depth + 1)
             has_uses = has_uses or child.has_uses
             if child.first_uses_line is not None:
                 first_uses_line = (
@@ -211,9 +267,7 @@ def _collect_yaml_use_occurrences(
                 )
     elif isinstance(node, yaml.SequenceNode):
         for item in node.value:
-            child = _collect_yaml_use_occurrences(item, _state)
-            if not _state.alias_ref_result:
-                occurrences.extend(child.occurrences)
+            child = _collect_yaml_use_occurrences(item, _state, _depth + 1)
             has_uses = has_uses or child.has_uses
             if child.first_uses_line is not None:
                 first_uses_line = (
@@ -222,10 +276,14 @@ def _collect_yaml_use_occurrences(
                     else min(first_uses_line, child.first_uses_line)
                 )
     _state.active.discard(node_id)
-    result = _SubtreeUses(tuple(occurrences), has_uses, first_uses_line)
-    _state.done[node_id] = result
-    _state.alias_ref_result = False
-    return result
+    _state.done[node_id] = _SubtreeUses(
+        tuple(own_occurrences), has_uses, first_uses_line
+    )
+    return _SubtreeUses(
+        _OccurrenceSpan(_state.occurrences, span_start, len(_state.occurrences)),
+        has_uses,
+        first_uses_line,
+    )
 
 
 def _scan_raw_uses(text: str) -> list[tuple[int, str, str]]:
@@ -256,11 +314,22 @@ def check_workflow_file(path: Path) -> list[str]:
         documents = list(yaml.compose_all(text, Loader=yaml.SafeLoader))
     except yaml.YAMLError as error:
         return [f"{path}: unparseable workflow YAML: {error}"]
+    except RecursionError:
+        return [
+            f"{path}: workflow YAML is nested too deeply for the parser "
+            "(RecursionError); refusing to verify"
+        ]
     if len(documents) != 1 or not isinstance(documents[0], yaml.MappingNode):
         return [f"{path}: workflow document is not a YAML mapping"]
 
     state = _AliasGraphState()
-    root = _collect_yaml_use_occurrences(documents[0], state)
+    try:
+        root = _collect_yaml_use_occurrences(documents[0], state)
+    except RecursionError:
+        return [
+            f"{path}: workflow YAML is nested too deeply for the occurrence "
+            "collector (RecursionError); refusing to verify"
+        ]
     occurrences = list(root.occurrences)
     raw_uses = _scan_raw_uses(text)
     raw_by_line = {lineno: (ref, rest) for lineno, ref, rest in raw_uses}
