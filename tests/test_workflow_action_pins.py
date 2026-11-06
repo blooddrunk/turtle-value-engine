@@ -804,3 +804,145 @@ jobs:
     cyclic = [v for v in violations if "cyclic" in v]
     assert cyclic, violations
     assert any(v.startswith(f"{path}:5:") for v in cyclic), violations
+
+
+# --- Issue #59 F7/F8: bounded occurrence materialization and deep-YAML safety ---
+
+
+def _nested_uses_chain_workflow(depth: int) -> str:
+    """Acyclic distinct-mapping chain fixture (Issue #59 F7).
+
+    Each of the ``depth`` nested mappings carries one genuine plain ``uses``
+    line and one nested ``child`` mapping, with no aliases anywhere: the
+    unique-node set and the distinct source ``uses`` lines both grow linearly
+    with ``depth`` while (pre-R5) every cached ancestor stored a full copy of
+    its descendants' occurrences."""
+    lines = [
+        "name: CI",
+        "jobs:",
+        "  test:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        f"      - uses: {CHECKOUT_PIN}",
+        "layers:",
+    ]
+    for index in range(depth):
+        indent = "  " * (index + 1)
+        lines.append(f"{indent}m{index}:")
+        lines.append(f"{indent}  uses: {CHECKOUT_PIN}")
+        lines.append(f"{indent}  child:")
+    lines.append(f"{'  ' * (depth + 2)}leaf: 1")
+    return "\n".join(lines) + "\n"
+
+
+def _nested_flow_collections_workflow(levels: int) -> str:
+    """``levels`` nested flow mappings under one root mapping (one line, no
+    aliases, no ``uses``): ``levels + 1`` collection nesting levels in a tiny
+    linear-byte input."""
+    return "root: " + "{a: " * levels + "1" + "}" * levels + "\n"
+
+
+def test_guard_bounds_acyclic_nested_uses_chain_materialization() -> None:
+    """F7: a chain of distinct mappings, each with one genuine ``uses`` key
+    and one nested child, has no aliases at all, yet the pre-R5 collector
+    copied every fresh child's full descendant tuple up into each ancestor's
+    cached result, storing O(depth^2) aggregate entries (3,405 cached entries
+    for 81 distinct source lines at depth 80 on main@2587c73). Aggregate
+    cached occurrence storage must stay linear: every cached node result
+    holds only its own node's occurrences."""
+    workflow = _nested_uses_chain_workflow(80)
+    documents = list(yaml.compose_all(workflow, Loader=yaml.SafeLoader))
+    assert len(documents) == 1
+    state = guard._AliasGraphState()
+    result = guard._collect_yaml_use_occurrences(documents[0], state)
+    distinct_source_uses_lines = 81  # the jobs step plus 80 chain levels
+    assert len(result.occurrences) == distinct_source_uses_lines
+    total_materialized = sum(len(entry.occurrences) for entry in state.done.values())
+    assert total_materialized <= len(state.done), total_materialized
+    assert len(state.done) <= 4 * distinct_source_uses_lines, len(state.done)
+
+
+def test_guard_materializes_each_distinct_source_occurrence_once() -> None:
+    """F7 design contract: the collector appends each distinct source
+    ``uses`` occurrence exactly once to the document-level accumulator, so
+    deep acyclic nesting never duplicates or drops entries."""
+    workflow = _nested_uses_chain_workflow(80)
+    documents = list(yaml.compose_all(workflow, Loader=yaml.SafeLoader))
+    state = guard._AliasGraphState()
+    guard._collect_yaml_use_occurrences(documents[0], state)
+    assert len(state.occurrences) == 81
+    assert len({entry[0] for entry in state.occurrences}) == 81
+
+
+def test_guard_accepts_deep_acyclic_nested_uses_chain(tmp_path: Path) -> None:
+    """F7 positive control: every chain level is an ordinary plain annotated
+    ``uses`` line, so a deep-but-legal acyclic chain (still far below the
+    supported nesting depth) stays accepted end to end."""
+    workflows = _write(tmp_path, "chain.yml", _nested_uses_chain_workflow(80))
+    assert guard.main([str(workflows)]) == 0
+
+
+def test_guard_fails_closed_on_parser_recursion_error(tmp_path: Path) -> None:
+    """F8: ~500 nested flow collections exhaust the recursive YAML parser.
+    The guard must return one controlled file-level diagnostic and exit 1,
+    never propagate a raw ``RecursionError`` traceback (main@2587c73 raises
+    out of ``check_workflow_file`` and crashes the CLI)."""
+    text = "root: " + "[" * 500 + "x" + "]" * 500 + "\n"
+    workflows = _write(tmp_path, "too-deep.yml", text)
+    violations = guard.check_workflow_file(workflows / "too-deep.yml")
+    assert guard.main([str(workflows)]) == 1
+    assert len(violations) == 1
+    assert "nested too deeply for the parser" in violations[0]
+
+
+def test_guard_fails_closed_on_collector_recursion_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F8: recursion exhaustion raised inside the collector itself must also
+    fail closed with one controlled file-level diagnostic instead of a
+    traceback (main@2587c73 propagates it out of ``check_workflow_file``)."""
+    workflows = _write(
+        tmp_path, "pinned.yml", PINNED_STEP_TEMPLATE.format(reference=CHECKOUT_PIN)
+    )
+
+    def exploding(*args: object, **kwargs: object) -> None:
+        raise RecursionError("simulated collector recursion exhaustion")
+
+    monkeypatch.setattr(guard, "_collect_yaml_use_occurrences", exploding)
+    violations = guard.check_workflow_file(workflows / "pinned.yml")
+    assert violations == [
+        f"{workflows / 'pinned.yml'}: workflow YAML is nested too deeply "
+        "for the occurrence collector (RecursionError); refusing to verify"
+    ]
+    assert guard.main([str(workflows)]) == 1
+
+
+def test_guard_accepts_workflow_at_supported_nesting_depth(tmp_path: Path) -> None:
+    """F8 boundary: exactly ``MAX_SUPPORTED_NESTING_DEPTH`` collection levels
+    (root plus 99 nested flow mappings) is inside the documented envelope and
+    must verify cleanly."""
+    levels = guard.MAX_SUPPORTED_NESTING_DEPTH - 1
+    workflows = _write(
+        tmp_path, "edge-ok.yml", _nested_flow_collections_workflow(levels)
+    )
+    assert guard.main([str(workflows)]) == 0
+
+
+def test_guard_fails_closed_beyond_supported_nesting_depth(tmp_path: Path) -> None:
+    """F8 boundary: one collection level beyond the documented limit is
+    refused before that branch is traversed, with a single deterministic
+    ``path:line`` diagnostic and exit 1 — a deep-but-parseable structure can
+    never pass or crash the guard (main@2587c73 has no depth limit and
+    accepts this exact input with zero violations)."""
+    levels = guard.MAX_SUPPORTED_NESTING_DEPTH
+    workflows = _write(
+        tmp_path, "edge-deep.yml", _nested_flow_collections_workflow(levels)
+    )
+    violations = guard.check_workflow_file(workflows / "edge-deep.yml")
+    assert guard.main([str(workflows)]) == 1
+    path = workflows / "edge-deep.yml"
+    deep = [v for v in violations if "supported depth limit" in v]
+    assert len(deep) == 1, violations
+    assert deep[0].startswith(f"{path}:1:")
+    assert "refusing to traverse" in deep[0]
+    assert len(violations) == 1
