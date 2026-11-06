@@ -55,9 +55,9 @@ from tests.test_owner_readiness_summary_r1_probes import (
     _KNOWN_PLACEHOLDERS,
     _PLACEHOLDER_SOURCES,
     _READONLY_SUBCOMMANDS,
-    _build_all_journeys,
     _parse_hint,
     _run_hint_with_stub,
+    _shared_all_journeys,
 )
 
 # The complete set of journey states the summary contract defines; the
@@ -465,7 +465,7 @@ def test_f1_no_command_tail_ends_with_sentence_punctuation_after_the_command(
     command's final quoted argument — and no prose step may masquerade as
     a command (start with ``tve `` right after the last colon)."""
 
-    journeys = _build_all_journeys(capsys, tmp_path)
+    journeys = _shared_all_journeys(capsys, tmp_path)
     for name, payload in journeys.items():
         for step in payload["next_steps_zh"]:
             if "：" not in step:
@@ -491,7 +491,7 @@ def test_f1_all_journeys_tails_are_complete_safe_and_literally_copyable(
     ``shlex.join`` line, and pastes into a no-op stub with the exact
     displayed argv and zero side-effect files."""
 
-    journeys = _build_all_journeys(capsys, tmp_path)
+    journeys = _shared_all_journeys(capsys, tmp_path)
     observed_states = set()
     sandbox = tmp_path / "r2-master-sandbox"
     for name, payload in journeys.items():
@@ -670,7 +670,7 @@ def test_f2_no_write_command_step_claims_to_be_the_sole_write_step(
     journey's ONLY file-writing step — both write (the baseline dossier
     step claimed ``唯一写文件步骤``)."""
 
-    journeys = _build_all_journeys(capsys, tmp_path)
+    journeys = _shared_all_journeys(capsys, tmp_path)
     offenders: list[tuple[str, str]] = []
     for name, payload in journeys.items():
         for step in payload["next_steps_zh"]:
@@ -690,7 +690,7 @@ def test_f2_both_write_commands_disclose_their_write_and_output_choice(
     steps must disclose the write, name --output and the operator's path
     choice, and neither may be labelled read-only."""
 
-    journeys = _build_all_journeys(capsys, tmp_path)
+    journeys = _shared_all_journeys(capsys, tmp_path)
     dossier_steps: list[str] = []
     plan_steps: list[str] = []
     for name, payload in journeys.items():

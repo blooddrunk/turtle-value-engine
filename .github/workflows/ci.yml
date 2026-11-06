@@ -59,7 +59,7 @@ jobs:
 
       - name: Run deterministic test suite
         if: steps.scope.outputs.mode == 'full'
-        run: python -m pytest --durations=30
+        run: python -m pytest -n auto --durations=30
 
       - name: Test action pin guard (PR fast path)
         if: steps.scope.outputs.mode == 'pin-guard-only'

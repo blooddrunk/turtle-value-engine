@@ -23,6 +23,7 @@ probes fail with the literal defects above (stray sandbox files, corrupted
 stub argv, dropped decision context, mislabelled write commands).
 """
 
+import copy
 import json
 import os
 import shlex
@@ -776,7 +777,7 @@ def test_every_executable_hint_is_complete_safe_and_readonly(
     no --apply/--output/--expected-* option, and executes under a stub with
     argv exactly as displayed and zero side-effect files."""
 
-    journeys = _build_all_journeys(capsys, tmp_path)
+    journeys = _shared_all_journeys(capsys, tmp_path)
     sandbox = tmp_path / "master-sandbox"
     for name, payload in journeys.items():
         steps = payload["next_steps_zh"]
@@ -904,6 +905,28 @@ def _build_all_journeys(capsys, tmp_path: Path) -> dict[str, dict]:
             "PREVIEW_READY",
         }, (name, payload["journey_state"])
     return journeys
+
+
+_SHARED_JOURNEYS: dict[str, dict] | None = None
+
+
+def _shared_all_journeys(capsys, tmp_path: Path) -> dict[str, dict]:
+    """Build the all-journeys corpus once per process and hand out copies.
+
+    The corpus is a pure JSON projection of the summary CLI: every consumer
+    reads only ``next_steps_zh`` prose, ``journey_state`` and similar payload
+    fields, never the build environment's files (hint execution goes through
+    a no-op ``tve`` stub with its own sandbox). Building the eleven journey
+    states costs several seconds of Ed25519 key generation and CLI setup;
+    six tests used to pay that cost independently. The first caller builds
+    the corpus and every caller — including the first — receives an
+    independent deep copy, so no test can observe another's mutations.
+    """
+
+    global _SHARED_JOURNEYS
+    if _SHARED_JOURNEYS is None:
+        _SHARED_JOURNEYS = _build_all_journeys(capsys, tmp_path)
+    return copy.deepcopy(_SHARED_JOURNEYS)
 
 
 def test_preview_hint_without_activation_root_is_prose_not_command(
