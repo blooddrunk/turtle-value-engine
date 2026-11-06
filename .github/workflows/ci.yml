@@ -32,6 +32,15 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/ci_change_scope.py
 
+      - name: Assert CI scope is a known mode
+        env:
+          CI_SCOPE_MODE: ${{ steps.scope.outputs.mode }}
+        run: |
+          case "$CI_SCOPE_MODE" in
+            full|docs-only|pin-guard-only) echo "CI scope mode: $CI_SCOPE_MODE" ;;
+            *) echo "::error::unknown CI scope mode '$CI_SCOPE_MODE'"; exit 1 ;;
+          esac
+
       - name: Install development, API and provenance dependencies
         if: steps.scope.outputs.mode != 'docs-only'
         run: python -m pip install ".[api,dev,provenance]"
