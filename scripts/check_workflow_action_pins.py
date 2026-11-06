@@ -19,6 +19,17 @@ invisible to the line scanner (quoted ``'uses':`` keys, block scalars,
 multi-line values, aliases) each fail closed, so an annotated decoy line can
 never authorize a different actual action occurrence. Duplicate ``uses`` keys
 in one mapping are rejected as an ambiguous encoding.
+
+PyYAML aliases reuse node objects, so the composed structure is a graph, not
+necessarily a tree. The collector traverses it with per-node memoization: a
+node reached while still being processed is a cyclic alias graph and a node
+reached again after completion is an alias re-reference. Cyclic graphs are
+rejected with a controlled ``path:line`` diagnostic (never an uncaught
+``RecursionError``), and a ``uses``-bearing subtree reached through an alias is
+rejected because its single annotated source line would have to authorize
+multiple effective occurrences. Anchors whose subtree contains no ``uses`` key
+are harmless and stay clean, and the memoized traversal stays linear in unique
+nodes plus alias references, so alias fan-out cannot cause exponential work.
 """
 
 from __future__ import annotations
@@ -26,6 +37,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -44,23 +56,92 @@ BLOCK_SCALAR_INDICATOR = re.compile(r"^[|>][+-]?$")
 NONSCALAR_USES_VALUE = "<non-scalar 'uses:' value>"
 
 
+@dataclass(frozen=True)
+class _SubtreeUses:
+    """``uses`` occurrences collected inside one composed YAML subtree, plus
+    whether the subtree contains any ``uses`` key at all (shared-alias
+    detection must fire even when the occurrences themselves fail line
+    binding)."""
+
+    occurrences: tuple[tuple[int, str, int], ...]
+    has_uses: bool
+
+
+@dataclass
+class _AliasGraphState:
+    """Graph-safe traversal state for one composed YAML document.
+
+    ``active`` holds node ids on the current depth-first path (a node reached
+    while active is a back-edge: a cyclic alias graph). ``done`` memoizes each
+    node's subtree result, which both bounds alias fan-out DAGs to linear work
+    and identifies a completed node reached again as an alias re-reference."""
+
+    active: set[int] = field(default_factory=set)
+    done: dict[int, _SubtreeUses] = field(default_factory=dict)
+    reported_shared: set[int] = field(default_factory=set)
+    reported_cycles: set[int] = field(default_factory=set)
+    duplicate_key_lines: list[int] = field(default_factory=list)
+    graph_violations: list[tuple[int, str]] = field(default_factory=list)
+
+
 def _collect_yaml_use_occurrences(
     node: Any,
-) -> tuple[list[tuple[int, str, int]], list[int]]:
-    """Walk the composed YAML node tree and return every effective ``uses``
-    occurrence as ``(key_line, value, value_line)`` (1-based lines, value
-    normalized like the raw scan) plus the key lines of mappings that declare
-    ``uses`` more than once."""
+    _state: _AliasGraphState | None = None,
+) -> _SubtreeUses:
+    """Walk the composed YAML node graph and return every effective ``uses``
+    occurrence in this subtree as ``(key_line, value, value_line)`` (1-based
+    lines, value normalized like the raw scan).
+
+    Graph safety: each node object is processed exactly once. A node reached
+    while still being processed is a cyclic alias graph; a node reached again
+    after completion is an alias re-reference whose subtree would authorize
+    several effective occurrences with one set of source lines. Both are
+    reported through ``_state.graph_violations`` as controlled diagnostics by
+    the caller, never as unbounded recursion."""
+    if _state is None:
+        _state = _AliasGraphState()
+    node_id = id(node)
+    completed = _state.done.get(node_id)
+    if completed is not None:
+        if completed.has_uses and node_id not in _state.reported_shared:
+            _state.reported_shared.add(node_id)
+            first_line = min(
+                (key_line for key_line, _value, _line in completed.occurrences),
+                default=node.start_mark.line + 1,
+            )
+            _state.graph_violations.append(
+                (
+                    first_line,
+                    "'uses:' occurrence is shared through a YAML alias: one "
+                    "annotated source line cannot authorize multiple effective "
+                    "action references",
+                )
+            )
+        return completed
+    if node_id in _state.active:
+        if node_id not in _state.reported_cycles:
+            _state.reported_cycles.add(node_id)
+            _state.graph_violations.append(
+                (
+                    node.start_mark.line + 1,
+                    "cyclic YAML alias graph (an anchor is referenced inside "
+                    "its own definition); refusing to traverse",
+                )
+            )
+        return _SubtreeUses((), False)
+    _state.active.add(node_id)
     occurrences: list[tuple[int, str, int]] = []
-    duplicate_key_lines: list[int] = []
+    has_uses = False
     if isinstance(node, yaml.MappingNode):
         uses_pairs = [
             (key_node, value_node)
             for key_node, value_node in node.value
             if isinstance(key_node, yaml.ScalarNode) and key_node.value == "uses"
         ]
+        if uses_pairs:
+            has_uses = True
         if len(uses_pairs) > 1:
-            duplicate_key_lines.append(uses_pairs[1][0].start_mark.line + 1)
+            _state.duplicate_key_lines.append(uses_pairs[1][0].start_mark.line + 1)
         for key_node, value_node in uses_pairs:
             raw_value = value_node.value if isinstance(value_node, yaml.ScalarNode) else None
             value = (
@@ -76,15 +157,18 @@ def _collect_yaml_use_occurrences(
                 )
             )
         for _key_node, value_node in node.value:
-            child_occurrences, child_duplicates = _collect_yaml_use_occurrences(value_node)
-            occurrences.extend(child_occurrences)
-            duplicate_key_lines.extend(child_duplicates)
+            child = _collect_yaml_use_occurrences(value_node, _state)
+            occurrences.extend(child.occurrences)
+            has_uses = has_uses or child.has_uses
     elif isinstance(node, yaml.SequenceNode):
         for item in node.value:
-            child_occurrences, child_duplicates = _collect_yaml_use_occurrences(item)
-            occurrences.extend(child_occurrences)
-            duplicate_key_lines.extend(child_duplicates)
-    return occurrences, duplicate_key_lines
+            child = _collect_yaml_use_occurrences(item, _state)
+            occurrences.extend(child.occurrences)
+            has_uses = has_uses or child.has_uses
+    _state.active.discard(node_id)
+    result = _SubtreeUses(tuple(occurrences), has_uses)
+    _state.done[node_id] = result
+    return result
 
 
 def _scan_raw_uses(text: str) -> list[tuple[int, str, str]]:
@@ -118,11 +202,16 @@ def check_workflow_file(path: Path) -> list[str]:
     if len(documents) != 1 or not isinstance(documents[0], yaml.MappingNode):
         return [f"{path}: workflow document is not a YAML mapping"]
 
-    occurrences, duplicate_key_lines = _collect_yaml_use_occurrences(documents[0])
+    state = _AliasGraphState()
+    root = _collect_yaml_use_occurrences(documents[0], state)
+    occurrences = list(root.occurrences)
     raw_uses = _scan_raw_uses(text)
     raw_by_line = {lineno: (ref, rest) for lineno, ref, rest in raw_uses}
 
-    for line in duplicate_key_lines:
+    for line, message in state.graph_violations:
+        violations.append(f"{path}:{line}: {message}")
+
+    for line in state.duplicate_key_lines:
         violations.append(
             f"{path}:{line}: duplicate 'uses' key in one mapping "
             "(ambiguous encoding)"

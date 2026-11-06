@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import scripts.check_workflow_action_pins as guard
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -497,3 +499,132 @@ jobs:
     assert len(violations) >= 1
     joined = "\n".join(violations)
     assert "uses" in joined
+
+
+# --- Issue #49 F4/F5: alias-graph robustness and source fidelity ---
+
+
+def test_guard_fails_on_alias_shared_action_mapping(tmp_path: Path) -> None:
+    """F4: PyYAML aliases reuse node objects, so a step mapping anchored once
+    and referenced twice makes two *effective* ``uses`` occurrences share one
+    annotated source line. A single annotation must not authorize multiple
+    action references; the guard must fail closed with an alias diagnostic
+    anchored at the shared ``uses`` line (Issue #49 F4)."""
+    workflow = """\
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - &shared
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - *shared
+"""
+    workflows = _write(tmp_path, "alias-shared.yml", workflow)
+    violations = guard.check_workflow_file(workflows / "alias-shared.yml")
+    assert guard.main([str(workflows)]) == 1
+    path = workflows / "alias-shared.yml"
+    shared = [v for v in violations if "alias" in v and "shared" in v]
+    assert shared, violations
+    assert any(v.startswith(f"{path}:7:") for v in shared), violations
+
+
+def test_guard_fails_on_cyclic_alias_graph_with_controlled_diagnostic(
+    tmp_path: Path,
+) -> None:
+    """F5: an anchor referenced inside its own definition composes into a
+    cyclic node graph. The guard must reject it with a controlled
+    ``path:line`` diagnostic and exit 1, never an uncaught RecursionError
+    (Issue #49 F5)."""
+    workflow = """\
+name: CI
+metadata: &cycle [*cycle]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+"""
+    workflows = _write(tmp_path, "cycle.yml", workflow)
+    violations = guard.check_workflow_file(workflows / "cycle.yml")
+    assert guard.main([str(workflows)]) == 1
+    path = workflows / "cycle.yml"
+    cyclic = [v for v in violations if "cyclic" in v]
+    assert cyclic, violations
+    assert any(v.startswith(f"{path}:2:") for v in cyclic), violations
+
+
+def test_guard_bounds_alias_fanout_traversal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F5 resource budget: a doubling-layer alias DAG has a tiny unique-node
+    set but an exponential number of root-to-node paths. The collector must
+    visit each composed node O(1) times (memoized), keeping the traversal
+    linear in nodes plus edges; the pre-R3 collector made 786,420 recursive
+    calls on this exact 17-layer fixture. Bounded structurally by counting
+    visitor invocations, not by timing."""
+    lines = [
+        "name: CI",
+        "jobs:",
+        "  test:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+        " # v7.0.1",
+        "layers:",
+        "  l0: &l0 [0]",
+    ]
+    lines.extend(f"  l{i}: &l{i} [*l{i - 1}, *l{i - 1}]" for i in range(1, 18))
+    workflows = _write(tmp_path, "fanout.yml", "\n".join(lines) + "\n")
+
+    calls = 0
+    original = guard._collect_yaml_use_occurrences
+
+    def counting(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(guard, "_collect_yaml_use_occurrences", counting)
+    assert guard.main([str(workflows)]) == 0
+    assert calls <= 200, f"alias fan-out traversal made {calls} node visits"
+
+
+def test_guard_accepts_harmless_reused_non_uses_anchor(tmp_path: Path) -> None:
+    """Positive control: reusing a YAML anchor that contains no ``uses`` key
+    (a shared env block) is harmless and must stay clean."""
+    workflow = """\
+name: CI
+configs:
+  env: &env-config
+    PYTHONHASHSEED: "0"
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: first
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env: *env-config
+      - name: second
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        env: *env-config
+"""
+    workflows = _write(tmp_path, "harmless-anchor.yml", workflow)
+    assert guard.main([str(workflows)]) == 0
+
+
+def test_guard_accepts_dead_anchor_on_pinned_step(tmp_path: Path) -> None:
+    """Positive control: an anchor defined on a legitimately pinned step but
+    never referenced by any alias is harmless (only alias *sharing* of a
+    ``uses``-bearing subtree is rejected)."""
+    workflow = """\
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - &step
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+"""
+    workflows = _write(tmp_path, "dead-anchor.yml", workflow)
+    assert guard.main([str(workflows)]) == 0
