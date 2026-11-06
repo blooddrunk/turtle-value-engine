@@ -60,6 +60,7 @@ from tests.test_owner_readiness_summary_r1_probes import (
     _KNOWN_PLACEHOLDERS,
     _PLACEHOLDER_SOURCES,
     _READONLY_SUBCOMMANDS,
+    JOURNEY_CORPUS_XDIST_GROUP,
     _executable_hints,
     _run_hint_with_stub,
     _shared_all_journeys,
@@ -543,6 +544,7 @@ def test_plan_guidance_stays_prose_with_hostile_paths(tmp_path, capsys):
         assert stray == [], (hint, stray)
 
 
+@pytest.mark.xdist_group(JOURNEY_CORPUS_XDIST_GROUP)
 def test_all_journeys_keep_write_commands_prose_and_readonly_tails(
     tmp_path, capsys
 ):
