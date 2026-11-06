@@ -984,3 +984,5 @@ __all__ = [
     "default_decoders",
     "default_source_adapters",
 ]
+
+# Phase-2 fast-path verification probe (2026-11-06): comment-only source change.
