@@ -1,10 +1,12 @@
 # Issue #67 — A 股 cached-source → 离线研究面操作员旅程收口（2026-11-07）
 
-Status: implemented; PR pending exact-head CI. PR #66（本 Issue 的前置依赖）
-已由所有者于 2026-11-07T10:10:35Z 合并（merge commit
+Status: implemented; PR #68 awaiting independent review/merge (no
+auto-merge). PR #66（本 Issue 的前置依赖）已由所有者于
+2026-11-07T10:10:35Z 合并（merge commit
 `6605a742fb961afd27aba4db6e1f8fb91c515d4e`），合并前其最终 head
 `24332616cde1b093496b6e5980e519fe228f4200` 已有成功 Actions run
-`42361700014`。
+`42361700014`。首个实现 head `3ac22f102fd641a0b58b672985fe1c281914e299`
+的 Actions run `42364354491` 已 success（test 4m35s）。
 
 ## Baseline
 
