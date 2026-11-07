@@ -83,6 +83,11 @@ The additive CLI is local and offline:
 
     tve surface validate --input research-surface.json
 
+The `--trace`/`--report` inputs are produced by the same analysis run through
+`tve analyze --trace-output/--report-output` (deterministic projections of
+the completed analysis); the operator journey chaining both commands is
+documented in `docs/operations/a-share-offline-research-journey.md`.
+
 This milestone does not serve HTTP, publish artifacts remotely, add auth,
 create Worker/D1/UI code, schedule refreshes or monitor watchlists. Those are
 separate follow-on packages.

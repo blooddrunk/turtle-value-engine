@@ -209,8 +209,17 @@ tve prepare 600519.SH \
 tve analyze \
   --input fixtures/healthy_cash_cow.json \
   --profile strict-v1 \
-  > analysis.json
+  --output analysis.json \
+  --trace-output decision-trace.json \
+  --report-output research-report.json
 ```
+
+`--output` 保存 `CompanyAnalysis`，`--trace-output` 保存确定性决策追踪，
+`--report-output` 保存人类可读研究报告；三者均可选，不传时行为与
+shell 重定向（`> analysis.json`）一致。
+
+由此可以把完整离线研究链路跑通到只读 Dashboard：
+`docs/operations/a-share-offline-research-journey.md`。
 
 # 当前已经实现什么？
 

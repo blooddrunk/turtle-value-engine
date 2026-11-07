@@ -180,10 +180,12 @@ from turtle_value_engine.preparation import (
     PreparationError,
 )
 from turtle_value_engine.providers import AKShareProvider, FilesystemRawResponseCache
+from turtle_value_engine.research import compose_report
 from turtle_value_engine.surface import (
     build_research_surface_snapshot,
     load_research_surface_snapshot,
 )
+from turtle_value_engine.traceability import build_decision_trace
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -220,6 +222,24 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=None,
         help="force full-cycle CDC normalization; otherwise honor the input special_model",
+    )
+    analyze_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="persist the CompanyAnalysis JSON to this path",
+    )
+    analyze_parser.add_argument(
+        "--trace-output",
+        type=Path,
+        default=None,
+        help="persist the deterministic decision trace to this path",
+    )
+    analyze_parser.add_argument(
+        "--report-output",
+        type=Path,
+        default=None,
+        help="persist the composed research report to this path",
     )
 
     prepare_parser = subparsers.add_parser(
@@ -1424,6 +1444,45 @@ def _atomic_write(path: Path, content: bytes) -> None:
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
+
+
+def _model_json_bytes(model: BaseModel) -> bytes:
+    # Key order follows model construction (like `tve prepare --output`): the
+    # decision-trace equality check in `tve surface build` is list-order
+    # sensitive, so the persisted analysis must round-trip in construction
+    # order rather than a sorted canonical form.
+    return (
+        json.dumps(model.model_dump(mode="json", warnings=False), ensure_ascii=False, indent=2)
+        + "\n"
+    ).encode("utf-8")
+
+
+def _persist_analyze_artifacts(args: argparse.Namespace, analysis: CompanyAnalysis) -> None:
+    """Persist explicitly requested projections of one completed analysis.
+
+    The trace and report are deterministic non-mutating projections of the
+    already-computed analysis; nothing is recalculated and no artifact is
+    written unless its output path was explicitly supplied.
+    """
+
+    output = getattr(args, "output", None)
+    trace_output = getattr(args, "trace_output", None)
+    report_output = getattr(args, "report_output", None)
+    if output is None and trace_output is None and report_output is None:
+        return
+    requested = [
+        path
+        for path in (output, trace_output, report_output)
+        if path is not None
+    ]
+    if len({path.resolve() for path in requested}) != len(requested):
+        raise ValueError("--output, --trace-output and --report-output must be distinct paths")
+    if output is not None:
+        _atomic_write(output, _model_json_bytes(analysis))
+    if trace_output is not None:
+        _atomic_write(trace_output, _model_json_bytes(build_decision_trace(analysis)))
+    if report_output is not None:
+        _atomic_write(report_output, _model_json_bytes(compose_report(analysis)))
 
 
 def _run_prepare(args: argparse.Namespace) -> object:
@@ -4391,6 +4450,7 @@ def main(argv: list[str] | None = None) -> int:
                     profile,
                     cyclical=args.cyclical,
                 )
+                _persist_analyze_artifacts(args, result)
             else:
                 try:
                     inputs = CDCInput.model_validate_json(raw_input)
