@@ -75,7 +75,10 @@ A/H listing + as_of
 Key public boundaries include:
 
 - `tve prepare`
-- `tve analyze --input ... --profile strict-v1`
+- `tve analyze --input ... --profile strict-v1` (optional
+  `--output`/`--trace-output`/`--report-output` persist the analysis and its
+  deterministic decision-trace/report projections for the offline operator
+  journey in `docs/operations/a-share-offline-research-journey.md`)
 - `NormalizedCompanyInputBuilder`
 - `materialize_effective_input`
 - `run_analyze_with_accepted_adjustments`
