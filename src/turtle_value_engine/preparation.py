@@ -442,7 +442,7 @@ class NormalizedCompanyInputBuilder:
             )
 
         entries: list[CacheCategoryReadiness] = []
-        retrieved_dates: list[date] = []
+        temporal_lower_bounds: list[date] = []
         used_identities: dict[str, str] = {}
         for category in request.categories:
             provider = self._select_provider(request, category)
@@ -482,7 +482,16 @@ class NormalizedCompanyInputBuilder:
                     )
                 )
                 continue
-            retrieved_dates.append(record.retrieved_at.astimezone(UTC).date())
+            # A replayable date must satisfy the exact same point-in-time
+            # constraints as _validate_as_of, not only retrieved_at.
+            category_dates = [record.retrieved_at.astimezone(UTC).date()]
+            for metadata in (record.request.parameters, record.response_metadata):
+                for field, value in metadata.items():
+                    if field in _POINT_IN_TIME_KEYS:
+                        observed_date = _date_token(value)
+                        if observed_date is not None:
+                            category_dates.append(observed_date)
+            temporal_lower_bounds.append(max(category_dates))
             try:
                 self._validate_as_of(record, request.as_of)
             except PreparationAcquisitionError as exc:
@@ -521,7 +530,9 @@ class NormalizedCompanyInputBuilder:
             ready=all(entry.status == "READY" for entry in entries),
             categories=tuple(entries),
             earliest_replayable_as_of=(
-                max(retrieved_dates) if retrieved_dates else None
+                max(temporal_lower_bounds)
+                if len(temporal_lower_bounds) == len(request.categories)
+                else None
             ),
         )
 

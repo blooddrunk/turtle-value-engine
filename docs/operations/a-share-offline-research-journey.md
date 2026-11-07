@@ -74,7 +74,7 @@ tve prepare 600519.SH \
   `as_of`）、`MISSING`（当前身份下无信封，附 `expected_path` 与同目录
   下自描述的其他信封 `cache_candidates`）、`FUTURE_DATA`（信封晚于
   `as_of`，`detail` 给出可用日期）或 `CORRUPT`（身份/解析失败，附路径）。
-- `earliest_replayable_as_of` 是全部类别同时可重放所需的最小 `as_of`。
+- `earliest_replayable_as_of` 仅在全部必需类别信封完整且可读取时给出；它同时考虑 `retrieved_at` 与现有点时约束元数据，是原始缓存符合重放时间门槛的最小 `as_of`。任何类别 `MISSING` / `CORRUPT` 时为 `null`，不可将其解释为已经可重放。
 - 该命令不使用也不接受 `--output`、`--allow-stale`、`--max-age-days`
   和公司上下文参数（它们与只读预检语义不符，会被拒绝）。
 - 特别注意 `MISSING` 且 `cache_candidates` 非空的情况：适配器版本号

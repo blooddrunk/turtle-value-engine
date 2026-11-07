@@ -490,7 +490,8 @@ def test_check_readiness_reports_every_missing_category_in_one_run(
         assert not Path(entry["expected_path"]).exists()
         # No foreign envelope exists to explain the miss.
         assert entry["cache_candidates"] == []
-    assert report["earliest_replayable_as_of"] == RETRIEVED_AT.date().isoformat()
+    # A missing required category has no guaranteed replayable date.
+    assert report["earliest_replayable_as_of"] is None
     assert _cache_snapshot(cache_dir) == cache_before
 
 
@@ -590,12 +591,44 @@ def test_check_readiness_classifies_future_and_corrupted_entries(
     }
     assert statuses["market_quote"] == "CORRUPT"
     assert statuses["balance_sheet"] == "READY"
+    assert corrupt_report["earliest_replayable_as_of"] is None
     corrupt_entry = next(
         entry
         for entry in corrupt_report["categories"]
         if entry["category"] == "market_quote"
     )
     assert corrupt_entry["expected_path"] in (corrupt_entry["detail"] or "")
+
+
+def test_check_readiness_earliest_date_respects_source_metadata(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    cache_dir = tmp_path / "raw-cache"
+    _populate_frozen_raw_cache(cache_dir)
+    target = next((cache_dir / "akshare" / "market_quote").glob("*.json"))
+    envelope = json.loads(target.read_text(encoding="utf-8"))
+    # A source-level point-in-time date can be later than retrieved_at.
+    # _validate_as_of rejects such a record at the earlier requested as_of.
+    publication_date = (RETRIEVED_AT.date() + timedelta(days=3)).isoformat()
+    envelope["response_metadata"]["publication_date"] = publication_date
+    target.write_text(
+        json.dumps(envelope, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    cache_before = _cache_snapshot(cache_dir)
+
+    assert main(_readiness_argv(cache_dir)) == 1
+    report = _readiness_stdout(capsys)
+    assert report["ready"] is False
+    statuses = {entry["category"]: entry["status"] for entry in report["categories"]}
+    assert statuses["market_quote"] == "FUTURE_DATA"
+    assert report["earliest_replayable_as_of"] == publication_date
+
+    # The exact reported date must now satisfy the shared replay constraints.
+    assert main(_readiness_argv(cache_dir, as_of=publication_date)) == 0
+    assert _readiness_stdout(capsys)["ready"] is True
+    assert _cache_snapshot(cache_dir) == cache_before
 
 
 def test_check_readiness_marks_unparseable_candidate_envelopes(tmp_path, monkeypatch):
