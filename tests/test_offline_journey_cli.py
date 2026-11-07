@@ -20,11 +20,24 @@ prepare CLI replay was proven against an injected failing provider, and the
 analyze/surface journey started from a frozen normalized fixture, so no test
 proved the operator chain raw cache -> prepare --offline -> analyze
 artifacts -> surface snapshot, nor its cache provenance linkage.
+
+Issue #69 adds the readiness preflight leg: before attempting an offline
+replay, the operator can ask ``tve prepare --check-readiness`` for a
+read-only, zero-network, zero-write per-category diagnosis of the raw cache.
+Gate A reproduction on pristine post-#68 main proved the material gap this
+closes: a partial cache reports only the FIRST missing category per failed
+replay run, and an adapter version bump (``AKSHARE_ADAPTER_VERSION`` moved
+192 -> 193 -> 194 across consecutive feature commits; the digest includes
+``provider_version``) invalidates every existing envelope with six opaque
+``no replayable cache entry for <digest>`` misses that name digests existing
+nowhere in the operator's cache directory, while the still-valid envelopes
+sit in plain sight under the same provider/category directories.
 """
 
 import json
 import socket
 import urllib.request
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -41,6 +54,10 @@ from turtle_value_engine.preparation import (
     NormalizedCompanyInputBuilder,
 )
 from turtle_value_engine.providers import FilesystemRawResponseCache
+from turtle_value_engine.providers.akshare import (
+    AKSHARE_ADAPTER_VERSION,
+    AKShareProvider,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "fixtures" / "healthy_cash_cow.json"
@@ -368,3 +385,312 @@ def test_cached_source_offline_replay_fails_closed_on_missing_category(
     # Fail-closed means no output side effects and an untouched source cache.
     assert not output.exists()
     assert _cache_snapshot(cache_dir) == cache_before
+
+
+def _readiness_argv(cache_dir: Path, as_of: str | None = None) -> list[str]:
+    argv = [
+        "prepare",
+        "600000.SH",
+        "--as-of",
+        as_of or RETRIEVED_AT.date().isoformat(),
+        "--provider",
+        "akshare",
+        "--check-readiness",
+        "--cache-dir",
+        str(cache_dir),
+    ]
+    return argv
+
+
+def _tree_snapshot(root: Path) -> dict[str, bytes]:
+    return {
+        str(path.relative_to(root)): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _readiness_stdout(capsys) -> dict:
+    return json.loads(capsys.readouterr().out)
+
+
+def test_check_readiness_ready_cache_reports_every_category_ready(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    cache_dir = tmp_path / "raw-cache"
+    fake = _populate_frozen_raw_cache(cache_dir)
+    cache_before = _cache_snapshot(cache_dir)
+    tree_before = _tree_snapshot(tmp_path)
+
+    assert main(_readiness_argv(cache_dir)) == 0
+    report = _readiness_stdout(capsys)
+    assert report["listing_id"] == "SH600000"
+    assert report["as_of"] == RETRIEVED_AT.date().isoformat()
+    assert report["provider"] == "akshare"
+    assert report["provider_version"] == AKSHARE_ADAPTER_VERSION
+    assert report["ready"] is True
+    assert [entry["category"] for entry in report["categories"]] == [
+        "company_metadata",
+        "listing_metadata",
+        "market_quote",
+        "cash_flow_statement",
+        "income_statement",
+        "balance_sheet",
+    ]
+    assert all(entry["status"] == "READY" for entry in report["categories"])
+    assert all(entry["retrieved_at"].startswith(RETRIEVED_AT.date().isoformat())
+               for entry in report["categories"])
+    # The report names the exact envelope the current identity expects, so a
+    # miss is no longer an opaque digest.
+    expected_paths = {
+        entry["category"]: entry["expected_path"]
+        for entry in report["categories"]
+    }
+    assert all(
+        (cache_dir / "akshare" / category / f"{Path(path).name}").exists()
+        for category, path in expected_paths.items()
+    )
+    assert report["earliest_replayable_as_of"] == RETRIEVED_AT.date().isoformat()
+
+    # Read-only and deterministic: the preflight added zero provider calls
+    # (the six fixture calls happened during cache population), zero writes.
+    assert len(fake.calls) == 6
+    assert _cache_snapshot(cache_dir) == cache_before
+    assert _tree_snapshot(tmp_path) == tree_before
+    assert main(_readiness_argv(cache_dir)) == 0
+    assert _readiness_stdout(capsys) == report
+
+
+def test_check_readiness_reports_every_missing_category_in_one_run(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    cache_dir = tmp_path / "raw-cache"
+    _populate_frozen_raw_cache(cache_dir)
+    # Gate A reproduced that a failed replay names only the FIRST missing
+    # category; the readiness preflight must surface all of them at once.
+    for category in ("market_quote", "balance_sheet"):
+        (next((cache_dir / "akshare" / category).glob("*.json"))).unlink()
+    cache_before = _cache_snapshot(cache_dir)
+
+    assert main(_readiness_argv(cache_dir)) == 1
+    report = _readiness_stdout(capsys)
+    assert report["ready"] is False
+    statuses = {entry["category"]: entry["status"] for entry in report["categories"]}
+    assert statuses["market_quote"] == "MISSING"
+    assert statuses["balance_sheet"] == "MISSING"
+    assert statuses["company_metadata"] == "READY"
+    assert statuses["income_statement"] == "READY"
+    missing = [
+        entry for entry in report["categories"] if entry["status"] == "MISSING"
+    ]
+    for entry in missing:
+        assert entry["expected_path"].startswith(str(cache_dir))
+        assert not Path(entry["expected_path"]).exists()
+        # No foreign envelope exists to explain the miss.
+        assert entry["cache_candidates"] == []
+    # A missing required category has no guaranteed replayable date.
+    assert report["earliest_replayable_as_of"] is None
+    assert _cache_snapshot(cache_dir) == cache_before
+
+
+def test_check_readiness_diagnoses_adapter_version_churn(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    cache_dir = tmp_path / "raw-cache"
+    # The operator's cache was written by the previous adapter version (the
+    # git-history churn case 193 -> 194); the envelopes are complete and
+    # valid, but every digest moved because provider_version is part of the
+    # cache identity.
+    previous_version = "193"
+    assert previous_version != AKSHARE_ADAPTER_VERSION
+    fake = FrozenAKShare()
+    stale_provider = AKShareProvider(
+        fake,
+        provider_version=previous_version,
+        clock=lambda: RETRIEVED_AT,
+    )
+    NormalizedCompanyInputBuilder(
+        stale_provider, FilesystemRawResponseCache(cache_dir)
+    ).prepare(
+        AcquisitionRequest(
+            listing_id="SH600000",
+            as_of=RETRIEVED_AT.date(),
+            provider="akshare",
+            company=Company(
+                name=_COMPANY_NAME,
+                primary_listing="SH600000",
+                sector=_COMPANY_SECTOR,
+                reporting_currency="CNY",
+            ),
+        )
+    )
+    assert len(fake.calls) == 6
+    cache_before = _cache_snapshot(cache_dir)
+
+    assert main(_readiness_argv(cache_dir)) == 1
+    report = _readiness_stdout(capsys)
+    assert report["provider_version"] == AKSHARE_ADAPTER_VERSION
+    assert report["ready"] is False
+    # All six categories miss under the current identity, and every miss is
+    # explained by the same-directory envelopes written by the older adapter.
+    assert len(report["categories"]) == 6
+    for entry in report["categories"]:
+        assert entry["status"] == "MISSING"
+        assert not Path(entry["expected_path"]).exists()
+        candidates = entry["cache_candidates"]
+        assert len(candidates) == 1
+        assert candidates[0]["provider_id"] == "akshare"
+        assert candidates[0]["provider_version"] == previous_version
+        assert candidates[0]["entity_id"] == "SH600000"
+        assert Path(candidates[0]["file"]).exists()
+    # No envelope was readable, so no replayable as_of can be derived.
+    assert report["earliest_replayable_as_of"] is None
+    # The preflight added zero provider calls beyond the six population calls.
+    assert len(fake.calls) == 6
+    assert _cache_snapshot(cache_dir) == cache_before
+
+
+def test_check_readiness_classifies_future_and_corrupted_entries(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+
+    future_cache = tmp_path / "future-cache"
+    _populate_frozen_raw_cache(future_cache)
+    early_argv = _readiness_argv(
+        future_cache,
+        as_of=(RETRIEVED_AT.date() - timedelta(days=1)).isoformat(),
+    )
+    assert main(early_argv) == 1
+    future_report = _readiness_stdout(capsys)
+    assert future_report["ready"] is False
+    for entry in future_report["categories"]:
+        assert entry["status"] == "FUTURE_DATA"
+        assert RETRIEVED_AT.date().isoformat() in (entry["detail"] or "")
+    assert future_report["earliest_replayable_as_of"] == (
+        RETRIEVED_AT.date().isoformat()
+    )
+
+    # A tampered envelope identity must surface as CORRUPT with its path,
+    # while the other categories are still individually reported.
+    cache_dir = tmp_path / "corrupt-cache"
+    _populate_frozen_raw_cache(cache_dir)
+    target = next((cache_dir / "akshare" / "market_quote").glob("*.json"))
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    payload["request"]["entity_id"] = "SH999999"
+    target.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    assert main(_readiness_argv(cache_dir)) == 1
+    corrupt_report = _readiness_stdout(capsys)
+    statuses = {
+        entry["category"]: entry["status"] for entry in corrupt_report["categories"]
+    }
+    assert statuses["market_quote"] == "CORRUPT"
+    assert statuses["balance_sheet"] == "READY"
+    assert corrupt_report["earliest_replayable_as_of"] is None
+    corrupt_entry = next(
+        entry
+        for entry in corrupt_report["categories"]
+        if entry["category"] == "market_quote"
+    )
+    assert corrupt_entry["expected_path"] in (corrupt_entry["detail"] or "")
+
+
+def test_check_readiness_earliest_date_respects_source_metadata(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    cache_dir = tmp_path / "raw-cache"
+    _populate_frozen_raw_cache(cache_dir)
+    target = next((cache_dir / "akshare" / "market_quote").glob("*.json"))
+    envelope = json.loads(target.read_text(encoding="utf-8"))
+    # A source-level point-in-time date can be later than retrieved_at.
+    # _validate_as_of rejects such a record at the earlier requested as_of.
+    publication_date = (RETRIEVED_AT.date() + timedelta(days=3)).isoformat()
+    envelope["response_metadata"]["publication_date"] = publication_date
+    target.write_text(
+        json.dumps(envelope, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    cache_before = _cache_snapshot(cache_dir)
+
+    assert main(_readiness_argv(cache_dir)) == 1
+    report = _readiness_stdout(capsys)
+    assert report["ready"] is False
+    statuses = {entry["category"]: entry["status"] for entry in report["categories"]}
+    assert statuses["market_quote"] == "FUTURE_DATA"
+    assert report["earliest_replayable_as_of"] == publication_date
+
+    # The exact reported date must now satisfy the shared replay constraints.
+    assert main(_readiness_argv(cache_dir, as_of=publication_date)) == 0
+    assert _readiness_stdout(capsys)["ready"] is True
+    assert _cache_snapshot(cache_dir) == cache_before
+
+
+def test_check_readiness_marks_unparseable_candidate_envelopes(tmp_path, monkeypatch):
+    _deny_network(monkeypatch)
+    cache_dir = tmp_path / "raw-cache"
+    _populate_frozen_raw_cache(cache_dir)
+    quote_dir = cache_dir / "akshare" / "market_quote"
+    (next(quote_dir.glob("*.json"))).unlink()
+    # Stray non-envelope files sit where the identity expects one; the
+    # candidate scan must report them as unreadable instead of guessing an
+    # identity — including JSON that parses but fails the identity typing.
+    stray = quote_dir / "not-an-envelope.json"
+    stray.write_text("{not json", encoding="utf-8")
+    mistyped = quote_dir / "mistyped-envelope.json"
+    mistyped.write_text(
+        json.dumps({"provider": {"id": 123}, "request": {"entity_id": 456}}),
+        encoding="utf-8",
+    )
+
+    builder = NormalizedCompanyInputBuilder(
+        AKShareProvider(), FilesystemRawResponseCache(cache_dir)
+    )
+    report = builder.inspect_readiness(
+        AcquisitionRequest(
+            listing_id="SH600000",
+            as_of=RETRIEVED_AT.date(),
+            provider="akshare",
+        )
+    )
+    entry = next(
+        item for item in report.categories if item.category == "market_quote"
+    )
+    assert entry.status == "MISSING"
+    assert [candidate.file for candidate in entry.cache_candidates] == [
+        str(mistyped),
+        str(stray),
+    ]
+    for candidate in entry.cache_candidates:
+        assert candidate.provider_id is None
+        assert candidate.provider_version is None
+        assert candidate.entity_id is None
+
+
+def test_check_readiness_rejects_flags_it_cannot_honor_faithfully(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    cache_dir = tmp_path / "raw-cache"
+    _populate_frozen_raw_cache(cache_dir)
+    base = _readiness_argv(cache_dir)
+    conflicting = [
+        ["--output", str(tmp_path / "normalized.json")],
+        ["--allow-stale"],
+        ["--max-age-days", "30"],
+        ["--name", _COMPANY_NAME],
+        ["--sector", _COMPANY_SECTOR],
+        ["--reporting-currency", "CNY"],
+        ["--company-json", str(tmp_path / "company.json")],
+    ]
+    for flags in conflicting:
+        assert main([*base, *flags]) == 2
+        stderr = capsys.readouterr().err
+        assert "--check-readiness" in stderr
+        assert flags[0] in stderr
+    assert not (tmp_path / "normalized.json").exists()

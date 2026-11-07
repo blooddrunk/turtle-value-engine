@@ -8,11 +8,13 @@ from a provider adapter.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, timedelta
-from typing import TypeAlias
+from pathlib import Path
+from typing import Literal, TypeAlias
 
 from pydantic import (
     BaseModel,
@@ -33,6 +35,8 @@ from turtle_value_engine.providers.base import (
     StructuredDataProvider,
 )
 from turtle_value_engine.providers.cache import (
+    CacheKey,
+    FilesystemRawResponseCache,
     ProviderFetchResult,
     RawResponseCache,
     fetch_with_cache,
@@ -188,6 +192,55 @@ class AcquisitionRequest(BaseModel):
             self.as_of.isoformat(),
             self.profile_id,
         )
+
+
+class CacheEnvelopeCandidate(BaseModel):
+    """One self-describing envelope found where the current identity expects none.
+
+    Identity fields are ``None`` for a file that exists in the category
+    directory but cannot be parsed as a cache envelope; the diagnostic never
+    guesses an identity from an arbitrary file.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    file: str
+    provider_id: str | None = None
+    provider_version: str | None = None
+    entity_id: str | None = None
+
+
+class CacheCategoryReadiness(BaseModel):
+    """Readiness of one preparation category under the current cache identity."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    category: str
+    status: Literal["READY", "MISSING", "FUTURE_DATA", "CORRUPT"]
+    expected_path: str
+    retrieved_at: str | None = None
+    detail: str | None = None
+    cache_candidates: tuple[CacheEnvelopeCandidate, ...] = ()
+
+
+class CacheReadinessReport(BaseModel):
+    """Read-only, zero-network readiness projection of one raw cache.
+
+    Classifications reuse the exact offline-replay semantics: the same
+    provider selection, the same cache-key derivation and the same
+    ``retrieved_at``/point-in-time validation the acquisition path enforces.
+    The report itself never mutates the cache and never contacts a provider.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    listing_id: str
+    as_of: date
+    provider: str
+    provider_version: str
+    ready: bool
+    categories: tuple[CacheCategoryReadiness, ...]
+    earliest_replayable_as_of: date | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -368,6 +421,121 @@ class NormalizedCompanyInputBuilder:
             )
         return AcquisitionBundle(request=request, fetches=tuple(fetches))
 
+    def inspect_readiness(self, request: AcquisitionRequest) -> CacheReadinessReport:
+        """Classify offline-replay readiness per category without any mutation.
+
+        Read-only and zero-network by construction: this method derives the
+        same cache key ``acquire`` would, reads each envelope with the cache's
+        own validation, applies the same ``as_of`` validation the acquisition
+        path enforces, and — when no envelope exists under the current
+        identity — scans that category directory for self-describing
+        envelopes (e.g. written by a previous adapter version) so an
+        identity anomaly is explained instead of surfacing as an opaque
+        digest miss.  No provider fetch, no cache write, no output file.
+        """
+
+        if not isinstance(request, AcquisitionRequest):
+            raise TypeError("request must be an AcquisitionRequest")
+        if not isinstance(self._cache, FilesystemRawResponseCache):
+            raise TypeError(
+                "cache readiness inspection requires a FilesystemRawResponseCache"
+            )
+
+        entries: list[CacheCategoryReadiness] = []
+        temporal_lower_bounds: list[date] = []
+        used_identities: dict[str, str] = {}
+        for category in request.categories:
+            provider = self._select_provider(request, category)
+            used_identities[provider.identity.provider_id] = (
+                provider.identity.provider_version
+            )
+            key = CacheKey.from_request(
+                provider.identity,
+                ProviderRequest(
+                    category=category,
+                    entity_id=request.listing_id,
+                    parameters=request.category_parameters.get(category.value, {}),
+                ),
+            )
+            expected_path = self._cache.path_for(key)
+            try:
+                record = self._cache.read(key)
+            except CacheError as exc:
+                entries.append(
+                    CacheCategoryReadiness(
+                        category=category.value,
+                        status="CORRUPT",
+                        expected_path=str(expected_path),
+                        detail=str(exc),
+                    )
+                )
+                continue
+            if record is None:
+                entries.append(
+                    CacheCategoryReadiness(
+                        category=category.value,
+                        status="MISSING",
+                        expected_path=str(expected_path),
+                        cache_candidates=_scan_envelope_candidates(
+                            expected_path.parent
+                        ),
+                    )
+                )
+                continue
+            # A replayable date must satisfy the exact same point-in-time
+            # constraints as _validate_as_of, not only retrieved_at.
+            category_dates = [record.retrieved_at.astimezone(UTC).date()]
+            for metadata in (record.request.parameters, record.response_metadata):
+                for field, value in metadata.items():
+                    if field in _POINT_IN_TIME_KEYS:
+                        observed_date = _date_token(value)
+                        if observed_date is not None:
+                            category_dates.append(observed_date)
+            temporal_lower_bounds.append(max(category_dates))
+            try:
+                self._validate_as_of(record, request.as_of)
+            except PreparationAcquisitionError as exc:
+                entries.append(
+                    CacheCategoryReadiness(
+                        category=category.value,
+                        status="FUTURE_DATA",
+                        expected_path=str(expected_path),
+                        retrieved_at=record.retrieved_at.isoformat(),
+                        detail=str(exc),
+                    )
+                )
+            else:
+                entries.append(
+                    CacheCategoryReadiness(
+                        category=category.value,
+                        status="READY",
+                        expected_path=str(expected_path),
+                        retrieved_at=record.retrieved_at.isoformat(),
+                    )
+                )
+        if len(used_identities) > 1:
+            advertised = ", ".join(
+                f"{provider_id}={version}"
+                for provider_id, version in sorted(used_identities.items())
+            )
+            raise PreparationError(
+                "readiness inspection resolved more than one provider identity "
+                f"({advertised}); inspect one provider at a time"
+            )
+        return CacheReadinessReport(
+            listing_id=request.listing_id,
+            as_of=request.as_of,
+            provider=request.provider,
+            provider_version=next(iter(used_identities.values())),
+            ready=all(entry.status == "READY" for entry in entries),
+            categories=tuple(entries),
+            earliest_replayable_as_of=(
+                max(temporal_lower_bounds)
+                if len(temporal_lower_bounds) == len(request.categories)
+                else None
+            ),
+        )
+
     def _resolve_company(
         self,
         bundle: AcquisitionBundle,
@@ -494,6 +662,9 @@ __all__ = [
     "AcquisitionBundle",
     "AcquisitionFetch",
     "AcquisitionRequest",
+    "CacheCategoryReadiness",
+    "CacheEnvelopeCandidate",
+    "CacheReadinessReport",
     "DEFAULT_PREPARATION_CATEGORIES",
     "NormalizedCompanyInputBuilder",
     "PreparationAcquisitionError",
@@ -532,6 +703,37 @@ def _canonicalize_preparation_values(
     payload = normalized.model_dump(mode="python", warnings=False)
     payload.update({"facts": facts, "flags": flags})
     return NormalizedCompanyInput.model_validate(payload)
+
+
+def _scan_envelope_candidates(directory: Path) -> tuple[CacheEnvelopeCandidate, ...]:
+    """List self-describing envelopes in one category directory, read-only.
+
+    Each file that parses as a cache envelope reports the identity it
+    self-describes (provider id/version and entity); anything else is listed
+    with ``None`` identity fields rather than guessed.  Files are visited in
+    sorted order so the projection is deterministic.
+    """
+
+    if not directory.is_dir():
+        return ()
+    candidates: list[CacheEnvelopeCandidate] = []
+    for path in sorted(directory.glob("*.json")):
+        try:
+            envelope = json.loads(path.read_text(encoding="utf-8"))
+            provider_data = envelope["provider"]
+            request_data = envelope["request"]
+            candidate = CacheEnvelopeCandidate(
+                file=str(path),
+                provider_id=provider_data["id"],
+                provider_version=provider_data["version"],
+                entity_id=request_data["entity_id"],
+            )
+        except (OSError, ValueError, KeyError, TypeError):
+            # ValueError also covers JSON decode errors and envelope fields
+            # that parse but fail the candidate's own string typing.
+            candidate = CacheEnvelopeCandidate(file=str(path))
+        candidates.append(candidate)
+    return tuple(candidates)
 
 
 def _date_token(value: object) -> date | None:

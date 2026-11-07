@@ -254,6 +254,15 @@ def _build_parser() -> argparse.ArgumentParser:
     prepare_parser.add_argument("--analysis-id", default=None)
     prepare_parser.add_argument("--cache-dir", type=Path, default=Path(".tve-cache"))
     prepare_parser.add_argument("--offline", action="store_true")
+    prepare_parser.add_argument(
+        "--check-readiness",
+        action="store_true",
+        help=(
+            "read-only preflight: classify per-category raw-cache readiness for "
+            "offline replay (exit 0 ready / 1 not ready / 2 invalid input); "
+            "never fetches, never writes"
+        ),
+    )
     prepare_parser.add_argument("--allow-stale", action="store_true")
     prepare_parser.add_argument("--max-age-days", type=float, default=None)
     prepare_parser.add_argument("--output", type=Path, default=None)
@@ -1490,9 +1499,52 @@ def _persist_analyze_artifacts(args: argparse.Namespace, analysis: CompanyAnalys
         _atomic_write(report_output, _model_json_bytes(compose_report(analysis)))
 
 
+def _run_prepare_readiness(args: argparse.Namespace) -> object:
+    """Read-only raw-cache readiness preflight for offline replay."""
+
+    conflicts: list[str] = []
+    if args.output is not None:
+        conflicts.append("--output")
+    if args.allow_stale:
+        conflicts.append("--allow-stale")
+    if args.max_age_days is not None:
+        conflicts.append("--max-age-days")
+    for flag, attribute in (
+        ("--name", "name"),
+        ("--sector", "sector"),
+        ("--reporting-currency", "reporting_currency"),
+        ("--company-json", "company_json"),
+    ):
+        if getattr(args, attribute) is not None:
+            conflicts.append(flag)
+    if conflicts:
+        raise ValueError(
+            "--check-readiness is a read-only preflight and does not use: "
+            + ", ".join(conflicts)
+        )
+    request = AcquisitionRequest(
+        listing_id=args.listing_id,
+        as_of=args.as_of,
+        provider=args.provider,
+        analysis_id=args.analysis_id,
+        profile_id=args.profile,
+    )
+    builder = NormalizedCompanyInputBuilder(
+        AKShareProvider(), FilesystemRawResponseCache(args.cache_dir)
+    )
+    report = builder.inspect_readiness(request)
+    if not report.ready:
+        raise _CliPayloadExit(
+            report.model_dump(mode="json", warnings=False), 1
+        )
+    return report
+
+
 def _run_prepare(args: argparse.Namespace) -> object:
     if args.provider.lower() != "akshare":
         raise ValueError("only the implemented akshare provider is available to `tve prepare`")
+    if args.check_readiness:
+        return _run_prepare_readiness(args)
     listing_id = AcquisitionRequest(
         listing_id=args.listing_id,
         as_of=args.as_of,
