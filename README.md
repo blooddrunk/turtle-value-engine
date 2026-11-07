@@ -200,8 +200,11 @@ tve prepare 600519.SH \
 
 `tve prepare` 的公司名称、行业和报告货币必须由调用者显式提供，或
 通过 `--company-json` 提供；准备层不会猜测这些核心上下文。重复执行时
-可以使用 `--offline` 从 raw cache replay，之后把生成的 JSON 交给
-`tve analyze --input normalized.json --profile strict-v1`。
+可以使用 `--offline` 从 raw cache replay（六个默认类别必须齐全、
+`--as-of` 不得早于缓存获取日期，否则失败关闭），之后把生成的 JSON
+交给 `tve analyze --input normalized.json --profile strict-v1`。从已有
+raw cache 离线重放的完整操作步骤与失败行为见
+`docs/operations/a-share-offline-research-journey.md` 第 0B 步。
 
 也可以保存到文件：
 

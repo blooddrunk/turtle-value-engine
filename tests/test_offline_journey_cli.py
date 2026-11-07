@@ -1,5 +1,5 @@
-"""Issue #65 operator-journey coverage: the complete offline A-share research
-chain must be reachable through the real CLI alone.
+"""Issue #65/#67 operator-journey coverage: the complete offline A-share
+research chain must be reachable through the real CLI alone.
 
 The journey under test is the one an operator can follow from the README:
 ``tve analyze`` (with explicit artifact outputs) -> ``tve surface build``
@@ -9,6 +9,17 @@ in separate tests: the analyze CLI wrote nothing to disk, and the surface
 build CLI was fed by library-built artifacts, so no test proved that an
 operator without Python glue could produce a snapshot whose
 ``decision_trace_reference`` and ``research_report_reference`` are populated.
+
+Issue #67 adds the cached-source entry leg: an operator holding a raw
+provider cache (from a previous online ``tve prepare``) replays preparation
+through the real ``tve prepare --offline`` CLI — with no provider injection,
+so the socket guard itself proves the replay never touches the network — and
+feeds the prepared normalized input into the same analyze/surface chain.
+Before this coverage the two halves existed only in separate tests: the
+prepare CLI replay was proven against an injected failing provider, and the
+analyze/surface journey started from a frozen normalized fixture, so no test
+proved the operator chain raw cache -> prepare --offline -> analyze
+artifacts -> surface snapshot, nor its cache provenance linkage.
 """
 
 import json
@@ -18,10 +29,24 @@ from pathlib import Path
 
 import pytest
 
+from tests.test_phase_2_3_closure import (
+    RETRIEVED_AT,
+    FrozenAKShare,
+    akshare_provider,
+)
 from turtle_value_engine.cli import main
+from turtle_value_engine.models import Company
+from turtle_value_engine.preparation import (
+    AcquisitionRequest,
+    NormalizedCompanyInputBuilder,
+)
+from turtle_value_engine.providers import FilesystemRawResponseCache
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "fixtures" / "healthy_cash_cow.json"
+
+_COMPANY_NAME = "Frozen journey company"
+_COMPANY_SECTOR = "frozen-sector"
 
 
 def _deny_network(monkeypatch):
@@ -30,6 +55,65 @@ def _deny_network(monkeypatch):
 
     monkeypatch.setattr(socket, "socket", fail_network)
     monkeypatch.setattr(urllib.request, "urlopen", fail_network)
+
+
+def _populate_frozen_raw_cache(cache_dir: Path) -> FrozenAKShare:
+    """Stand in for the operator's pre-existing raw cache.
+
+    Populates the cache the only way production code ever does: a live
+    ``NormalizedCompanyInputBuilder.prepare`` through the frozen fixture
+    client, which reads repository fixtures and performs no I/O beyond the
+    six envelope writes.
+    """
+
+    fake = FrozenAKShare()
+    builder = NormalizedCompanyInputBuilder(
+        akshare_provider(fake), FilesystemRawResponseCache(cache_dir)
+    )
+    builder.prepare(
+        AcquisitionRequest(
+            listing_id="SH600000",
+            as_of=RETRIEVED_AT.date(),
+            provider="akshare",
+            company=Company(
+                name=_COMPANY_NAME,
+                primary_listing="SH600000",
+                sector=_COMPANY_SECTOR,
+                reporting_currency="CNY",
+            ),
+        )
+    )
+    assert len(fake.calls) == 6
+    return fake
+
+
+def _prepare_offline_argv(cache_dir: Path, output: Path) -> list[str]:
+    return [
+        "prepare",
+        "600000.SH",
+        "--as-of",
+        RETRIEVED_AT.date().isoformat(),
+        "--provider",
+        "akshare",
+        "--offline",
+        "--name",
+        _COMPANY_NAME,
+        "--sector",
+        _COMPANY_SECTOR,
+        "--reporting-currency",
+        "CNY",
+        "--cache-dir",
+        str(cache_dir),
+        "--output",
+        str(output),
+    ]
+
+
+def _cache_snapshot(cache_dir: Path) -> dict[str, bytes]:
+    return {
+        str(path.relative_to(cache_dir)): path.read_bytes()
+        for path in sorted(cache_dir.rglob("*.json"))
+    }
 
 
 def test_analyze_cli_emits_artifacts_and_full_surface_chain_is_reachable(
@@ -169,3 +253,118 @@ def test_analyze_cli_never_overwrites_its_source_input(
     assert "must not overwrite --input" in capsys.readouterr().err
     assert source.read_bytes() == original
     assert not independent_output.exists()
+
+
+def test_cached_source_offline_replay_completes_the_surface_chain(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    cache_dir = tmp_path / "raw-cache"
+    fake = _populate_frozen_raw_cache(cache_dir)
+    envelope_digests = {path.stem for path in cache_dir.rglob("*.json")}
+    cache_before = _cache_snapshot(cache_dir)
+
+    # The CLI leg constructs the real AKShareProvider (no injection): the
+    # socket guard is therefore the proof that --offline replay never calls
+    # a provider or imports the akshare client at all.
+    normalized_path = tmp_path / "normalized.json"
+    assert main(_prepare_offline_argv(cache_dir, normalized_path)) == 0
+    capsys.readouterr()
+    assert len(fake.calls) == 6  # the CLI replay added zero fixture fetches
+    normalized = json.loads(normalized_path.read_text(encoding="utf-8"))
+    assert normalized["company"]["primary_listing"] == "SH600000"
+    assert normalized["as_of"] == RETRIEVED_AT.date().isoformat()
+    assert normalized["profile_id"] == "strict-v1"
+    # Source provenance is auditable: every evidence document_id is exactly
+    # the sha256 digest naming its raw-cache envelope.
+    assert {
+        evidence["source"]["document_id"]
+        for evidence in normalized["evidence_index"]
+    } == envelope_digests
+    # The operator's raw cache is replayed read-only, never rewritten.
+    assert _cache_snapshot(cache_dir) == cache_before
+
+    replay_path = tmp_path / "normalized-replay.json"
+    assert main(_prepare_offline_argv(cache_dir, replay_path)) == 0
+    capsys.readouterr()
+    assert replay_path.read_bytes() == normalized_path.read_bytes()
+
+    analysis_path = tmp_path / "analysis.json"
+    trace_path = tmp_path / "decision-trace.json"
+    report_path = tmp_path / "research-report.json"
+    snapshot_path = tmp_path / "snapshot.json"
+    assert (
+        main(
+            [
+                "analyze",
+                "--input",
+                str(normalized_path),
+                "--profile",
+                "strict-v1",
+                "--output",
+                str(analysis_path),
+                "--trace-output",
+                str(trace_path),
+                "--report-output",
+                str(report_path),
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
+    trace = json.loads(trace_path.read_text(encoding="utf-8"))
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    analysis_id = analysis["analysis_id"]
+    # The prepared input carries no structured assessment either: the chain
+    # must keep surfacing the fail-closed decision, not a confident pass.
+    assert analysis["company"]["primary_listing"] == "SH600000"
+    assert analysis["decision"]["state"] == "SPECIAL_REVIEW"
+    assert trace["analysis_id"] == analysis_id
+    assert report["analysis_sha256"] is not None
+
+    assert (
+        main(
+            [
+                "surface",
+                "build",
+                "--analysis",
+                str(analysis_path),
+                "--trace",
+                str(trace_path),
+                "--report",
+                str(report_path),
+                "--output",
+                str(snapshot_path),
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    assert main(["surface", "validate", "--input", str(snapshot_path)]) == 0
+    snapshot = json.loads(capsys.readouterr().out)
+    assert snapshot["analysis_id"] == analysis_id
+    assert snapshot["company"]["primary_listing"] == "SH600000"
+    assert snapshot["decision_trace_reference"] is not None
+    assert snapshot["research_report_reference"] is not None
+
+
+def test_cached_source_offline_replay_fails_closed_on_missing_category(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    cache_dir = tmp_path / "raw-cache"
+    _populate_frozen_raw_cache(cache_dir)
+    # A partial cache (the realistic operator state after an interrupted or
+    # older acquisition) misses one of the six default categories.
+    (next((cache_dir / "akshare" / "market_quote").glob("*.json"))).unlink()
+    cache_before = _cache_snapshot(cache_dir)
+
+    output = tmp_path / "normalized.json"
+    assert main(_prepare_offline_argv(cache_dir, output)) == 2
+    stderr = capsys.readouterr().err
+    assert "market_quote" in stderr
+    assert "no replayable cache entry" in stderr
+    # Fail-closed means no output side effects and an untouched source cache.
+    assert not output.exists()
+    assert _cache_snapshot(cache_dir) == cache_before
