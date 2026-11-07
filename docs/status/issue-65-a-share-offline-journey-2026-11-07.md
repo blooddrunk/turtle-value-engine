@@ -1,6 +1,6 @@
 # Issue #65 — A 股离线个人研究全流程可用性收口（2026-11-07）
 
-Status: implemented; awaiting the one natural exact-head PR CI run.
+Status: implemented in PR #66; independent acceptance pending. Verify CI against the final PR head after any review edits.
 
 ## Baseline
 
@@ -86,7 +86,7 @@ This is a bounded usability gap, not an investment-semantics change.
   `release_profile_sha256`), `docs/releases/strict-v2/release-candidate.json`
   `604226f405fe0330`, `config/project.example.toml` `9c621217285ade01`,
   `config/monitoring-runner.example.json` `c81008c9886326ae`.
-- Exact-head PR CI: recorded in the PR description (single natural run).
+- Initial exact-head PR CI: run 42354500126 succeeded at `419d40242b1af583630a8be1b193ba72b77995fb` (single natural run; no reruns). Any subsequent review fix requires a fresh exact-final-head CI check.
 
 ## Changed files
 

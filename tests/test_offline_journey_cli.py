@@ -16,6 +16,8 @@ import socket
 import urllib.request
 from pathlib import Path
 
+import pytest
+
 from turtle_value_engine.cli import main
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -142,3 +144,28 @@ def test_analyze_cli_rejects_colliding_output_paths(tmp_path, capsys, monkeypatc
     assert exit_code == 2
     assert "must be distinct" in capsys.readouterr().err
     assert not shared.exists()
+
+
+@pytest.mark.parametrize("artifact_flag", ["--output", "--trace-output", "--report-output"])
+def test_analyze_cli_never_overwrites_its_source_input(
+    artifact_flag, tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    source = tmp_path / "original-normalized.json"
+    original = FIXTURE.read_bytes()
+    source.write_bytes(original)
+    independent_output = tmp_path / "analysis.json"
+
+    # Cover both direct source overwrite and a later colliding artifact:
+    # a preflight refusal must leave all existing/new files unchanged.
+    outputs = [artifact_flag, str(source)]
+    if artifact_flag != "--output":
+        outputs = ["--output", str(independent_output), *outputs]
+    exit_code = main([
+        "analyze", "--input", str(source), "--profile", "strict-v1", *outputs
+    ])
+
+    assert exit_code == 2
+    assert "must not overwrite --input" in capsys.readouterr().err
+    assert source.read_bytes() == original
+    assert not independent_output.exists()

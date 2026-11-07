@@ -1475,8 +1475,13 @@ def _persist_analyze_artifacts(args: argparse.Namespace, analysis: CompanyAnalys
         for path in (output, trace_output, report_output)
         if path is not None
     ]
-    if len({path.resolve() for path in requested}) != len(requested):
+    resolved_requested = [path.resolve() for path in requested]
+    if len(set(resolved_requested)) != len(requested):
         raise ValueError("--output, --trace-output and --report-output must be distinct paths")
+    # Never replace the normalized source input with a derived artifact.
+    # Check before writing *any* output to avoid partial artifact publication.
+    if args.input.resolve() in resolved_requested:
+        raise ValueError("analyze artifact output must not overwrite --input")
     if output is not None:
         _atomic_write(output, _model_json_bytes(analysis))
     if trace_output is not None:

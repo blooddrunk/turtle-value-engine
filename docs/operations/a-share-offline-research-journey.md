@@ -97,7 +97,9 @@ tve surface serve --snapshot work/snapshot.json --host 127.0.0.1 --port 8787
 ```bash
 curl -s http://127.0.0.1:8787/healthz
 curl -s http://127.0.0.1:8787/v1/surfaces
-curl -s http://127.0.0.1:8787/v1/surfaces/<surface_id> | head -c 400
+# 将下面的值替换为 /v1/surfaces 响应或 work/snapshot.json 中的真实 surface_id
+SURFACE_ID='paste-actual-surface-id-here'
+curl -fsS "http://127.0.0.1:8787/v1/surfaces/${SURFACE_ID}" | head -c 400
 ```
 
 所有 mutation 方法（POST/PUT/PATCH/DELETE）返回 405。Dashboard 本地
