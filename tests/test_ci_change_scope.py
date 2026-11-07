@@ -606,7 +606,7 @@ def test_full_mode_runs_every_verification_step():
         "check_workflow_action_pins.py",
         "ruff check",
         "config validate",
-        "python -m pytest -n auto --durations=30",
+        "python -m pytest -n auto --dist loadgroup --durations=30",
         "systemd-analyze verify",
         "export_surface_openapi.py --check",
         "dashboard lint",

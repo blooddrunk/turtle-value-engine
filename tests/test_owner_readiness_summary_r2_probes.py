@@ -31,6 +31,7 @@ import shlex
 import socket
 from pathlib import Path
 
+import pytest
 from cryptography.hazmat.primitives import serialization
 
 from tests.test_activation_execution import (
@@ -55,6 +56,7 @@ from tests.test_owner_readiness_summary_r1_probes import (
     _KNOWN_PLACEHOLDERS,
     _PLACEHOLDER_SOURCES,
     _READONLY_SUBCOMMANDS,
+    JOURNEY_CORPUS_XDIST_GROUP,
     _parse_hint,
     _run_hint_with_stub,
     _shared_all_journeys,
@@ -458,6 +460,7 @@ def test_f1_hostile_paths_and_genuine_full_stop_filenames(tmp_path, capsys):
         )
 
 
+@pytest.mark.xdist_group(JOURNEY_CORPUS_XDIST_GROUP)
 def test_f1_no_command_tail_ends_with_sentence_punctuation_after_the_command(
     tmp_path, capsys
 ):
@@ -482,6 +485,7 @@ def test_f1_no_command_tail_ends_with_sentence_punctuation_after_the_command(
                 )
 
 
+@pytest.mark.xdist_group(JOURNEY_CORPUS_XDIST_GROUP)
 def test_f1_all_journeys_tails_are_complete_safe_and_literally_copyable(
     tmp_path, capsys
 ):
@@ -663,6 +667,7 @@ def test_repeatable_inputs_keep_order_and_multiplicity_in_the_literal_tail(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.xdist_group(JOURNEY_CORPUS_XDIST_GROUP)
 def test_f2_no_write_command_step_claims_to_be_the_sole_write_step(
     tmp_path, capsys
 ):
@@ -682,6 +687,7 @@ def test_f2_no_write_command_step_claims_to_be_the_sole_write_step(
     )
 
 
+@pytest.mark.xdist_group(JOURNEY_CORPUS_XDIST_GROUP)
 def test_f2_both_write_commands_disclose_their_write_and_output_choice(
     tmp_path, capsys
 ):

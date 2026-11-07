@@ -31,6 +31,7 @@ import socket
 import subprocess
 from pathlib import Path
 
+import pytest
 from cryptography.hazmat.primitives import serialization
 
 from tests.test_activation_execution import (
@@ -61,6 +62,15 @@ from tests.test_owner_readiness_summary import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# One xdist group shared by every test that consumes the all-journeys corpus
+# so pytest-xdist dispatches them all to the same worker: under ``-n auto``
+# the per-process corpus cache is otherwise rebuilt once per worker that
+# draws a consumer, and the measured duplicate builds cost more wall time
+# than running the consumers sequentially after a single build.
+# ``tests/test_owner_readiness_journey_colocation.py`` fails closed when a
+# consumer loses or diverges from this mark.
+JOURNEY_CORPUS_XDIST_GROUP = "owner-readiness-journeys"
 
 # The exact bare placeholder fragments the baseline emitted inside
 # command-shaped strings (F1); none may ever appear again in any step.
@@ -769,6 +779,7 @@ def test_f3_decision_dossier_mentions_disclose_the_write(tmp_path, capsys):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.xdist_group(JOURNEY_CORPUS_XDIST_GROUP)
 def test_every_executable_hint_is_complete_safe_and_readonly(
     tmp_path, capsys
 ):
