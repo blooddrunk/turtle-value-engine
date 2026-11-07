@@ -33,7 +33,10 @@ def evaluate_eligibility_gate(
                 status=GateStatus.SPECIAL_REVIEW,
                 threshold=profile.universe.min_listing_years_pass,
                 evidence_ids=listing_evidence,
-                message="Listing history is missing.",
+                message=(
+                    "Listing history is missing at the analysis point-in-time "
+                    f"period {period}."
+                ),
             )
         )
     elif listing_years < profile.universe.min_listing_years_watch:
@@ -74,7 +77,10 @@ def evaluate_eligibility_gate(
     treatment_evidence = [] if treatment_ref is None else list(treatment_ref.evidence_ids)
     if special_treatment is None:
         treatment_status = GateStatus.SPECIAL_REVIEW
-        message = "Special-treatment status is missing."
+        message = (
+            "Special-treatment status is missing at the analysis point-in-time "
+            f"period {period}."
+        )
     elif special_treatment and profile.universe.exclude_special_treatment:
         treatment_status = GateStatus.FAIL
         message = "Special-treatment status is excluded by the active profile."
@@ -97,7 +103,10 @@ def evaluate_eligibility_gate(
     equity_evidence = [] if equity_ref is None else list(equity_ref.evidence_ids)
     if parent_equity is None:
         equity_status = GateStatus.SPECIAL_REVIEW
-        equity_message = "Parent equity is missing."
+        equity_message = (
+            "Parent equity is missing at the analysis point-in-time "
+            f"period {period}."
+        )
     elif parent_equity < 0 and profile.universe.exclude_negative_parent_equity:
         equity_status = GateStatus.FAIL
         equity_message = "Parent equity is negative."

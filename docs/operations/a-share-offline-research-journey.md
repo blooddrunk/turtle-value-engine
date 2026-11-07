@@ -188,6 +188,16 @@ curl -fsS "http://127.0.0.1:8787/v1/surfaces/${SURFACE_ID}" | head -c 400
   预期状态，不是流程错误。
 - `business_quality` 为 `NOT_EVALUATED`、估值标记
   `NON_PRICE_GATES_UNRESOLVED`：与上一条同因。
+- universe 门槛报 `... is missing at the analysis point-in-time period
+  AS_OF_<日期>`（如 `Parent equity is missing at ... AS_OF_2026-09-12.`）：
+  引擎的时点类检查只读取**分析日时点事实**（`AS_OF_<as_of>` 期间的事实），
+  不用年报期间的事实代替。第 0B 步的 provider 归一化输入只带
+  `2024-12-31`/`2025-12-31` 这类**财年期间**事实（报告的 facts 列表里
+  `parent_equity` 因此有值），缺少时点上下文事实，所以这些原因是
+  预期的失败关闭行为，**不是数据丢失或引擎缺陷**。要解除该原因，
+  需要为 `AS_OF_<as_of>` 期间补充带证据的时点事实（如
+  `fixtures/healthy_cash_cow.json` 中 `listing_years`、`parent_equity`、
+  `special_treatment` 都登记在其 `AS_OF_` 期间），而不是重新抓取财年数据。
 - 快照的 `historical_status.claim_state == "NOT_AVAILABLE"`：个人研究
   路径不携带历史语料声明。
 

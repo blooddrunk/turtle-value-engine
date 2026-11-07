@@ -339,6 +339,22 @@ def test_cached_source_offline_replay_completes_the_surface_chain(
     assert analysis["decision"]["state"] == "SPECIAL_REVIEW"
     assert trace["analysis_id"] == analysis_id
     assert report["analysis_sha256"] is not None
+    # Issue #71: the provider-normalized input DOES carry fiscal-period
+    # parent_equity facts, so the universe reason must name the
+    # point-in-time period it actually looked up instead of bare
+    # "Parent equity is missing.", which contradicts the visible facts.
+    provider_equity_periods = sorted(
+        fact["period"]
+        for fact in analysis["facts"]
+        if fact["field"] == "parent_equity"
+    )
+    assert provider_equity_periods == ["2024-12-31", "2025-12-31"]
+    equity_rule = next(
+        rule
+        for rule in analysis["gates"]["universe"]["rules"]
+        if rule["rule_id"] == "UNIVERSE.PARENT_EQUITY"
+    )
+    assert f"AS_OF_{RETRIEVED_AT.date().isoformat()}" in equity_rule["message"]
 
     assert (
         main(
