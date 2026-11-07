@@ -144,4 +144,15 @@ skipped tests are the standing opt-in live AKShare tests
 (`TVE_RUN_AKSHARE_LIVE=1`), not claimed as passed. This section (the
 documentation-only update recording that run) creates the final PR head;
 the merge is blocked until that final head's exact-head run is `success`,
-after which the merged-main run is recorded here as well.
+after which the merged-main run is recorded here as well. The
+documentation-only final head `03d62023295cf3bb167a9f6d2a44522b1ae26964`
+itself has exact-head Actions run
+[42345997061](https://github.com/blooddrunk/turtle-value-engine/actions/runs/42345997061)
+= `success` (full mode; **7795 passed / 2 skipped / 9 warnings** in 176.98 s;
+Dashboard 55). Merged 2026-11-07 as
+`ec45b0ffe6771993185a0e4bf959747eb74809d8`; merged-main Actions run
+[42346636006](https://github.com/blooddrunk/turtle-value-engine/actions/runs/42346636006)
+= `success` at that exact merge head (**7795 passed / 2 skipped /
+9 warnings** in 179.65 s; Dashboard 55). The merge diff is exactly the four
+files of §2, and the four protected artifacts are blob-identical on merged
+main.
