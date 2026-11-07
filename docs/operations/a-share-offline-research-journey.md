@@ -57,6 +57,31 @@ normalized input 出发，经确定性引擎产出分析、决策追踪与研究
 3. 与首次运行一样显式提供公司上下文（`--name/--sector/
    --reporting-currency` 或 `--company-json`），准备层不会猜测。
 
+**预检（推荐先执行）**：不必先尝试一次注定失败的重放来发现缓存问题。
+`tve prepare --check-readiness` 是只读、零网络、零写入的缓存就绪诊断，
+一次报告六个类别各自的状态（Issue #69）：
+
+```bash
+tve prepare 600519.SH \
+  --as-of <打算重放的日期> \
+  --provider akshare \
+  --check-readiness \
+  --cache-dir <与首次获取相同的 cache 目录>
+```
+
+- 退出码：`0` 全部就绪 / `1` 至少一个类别未就绪 / `2` 输入无效。
+- 每个类别报告 `READY`（信封存在、身份可再推导、`retrieved_at` 不晚于
+  `as_of`）、`MISSING`（当前身份下无信封，附 `expected_path` 与同目录
+  下自描述的其他信封 `cache_candidates`）、`FUTURE_DATA`（信封晚于
+  `as_of`，`detail` 给出可用日期）或 `CORRUPT`（身份/解析失败，附路径）。
+- `earliest_replayable_as_of` 是全部类别同时可重放所需的最小 `as_of`。
+- 该命令不使用也不接受 `--output`、`--allow-stale`、`--max-age-days`
+  和公司上下文参数（它们与只读预检语义不符，会被拒绝）。
+- 特别注意 `MISSING` 且 `cache_candidates` 非空的情况：适配器版本号
+  （`provider_version`）参与缓存身份摘要，仓库升级后旧的完好信封会整体
+  变为 `MISSING`，而 `cache_candidates` 会指出它们仍躺在同一目录下
+  （由哪个版本写入）。此时需要用当前版本重新在线获取一次。
+
 ```bash
 tve prepare 600519.SH \
   --as-of <与首次获取一致或更晚的日期> \
