@@ -131,4 +131,17 @@ not applied.
 
 ## 6. PR / CI evidence
 
-(to be recorded after the runs complete)
+Delivered by [PR #64](https://github.com/blooddrunk/turtle-value-engine/pull/64)
+on branch `docs/phase-7-record-reconciliation-20261107` (single-change
+commit `29456b19e42696638f4fad1c4ee3de1fec3c73ee`): exact-head Actions run
+[42345275518](https://github.com/blooddrunk/turtle-value-engine/actions/runs/42345275518)
+= `success` at that exact `head_sha` — **7795 passed / 2 skipped /
+9 warnings** in 247.52 s, Dashboard **55 passed** (3 files), and every other
+matrix step green (scope classified full-mode, action-pin guard, Ruff,
+config validate, systemd verify, OpenAPI/API/types/lint/typecheck, build,
+client secret scan, Wrangler strict dry-run, cross-stack smoke). The two
+skipped tests are the standing opt-in live AKShare tests
+(`TVE_RUN_AKSHARE_LIVE=1`), not claimed as passed. This section (the
+documentation-only update recording that run) creates the final PR head;
+the merge is blocked until that final head's exact-head run is `success`,
+after which the merged-main run is recorded here as well.
