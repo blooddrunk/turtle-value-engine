@@ -34,8 +34,57 @@ normalized input 出发，经确定性引擎产出分析、决策追踪与研究
 列出了其余 7 个覆盖不同风险场景的 fixture）。
 
 如需从 provider/cache 准备真实 A 股标的，参见 `README.md` 的
-`tve prepare` 说明（首次获取需要网络，之后可用 `--offline` 从本地 raw
-cache 重放；本手册不依赖该步骤）。
+`tve prepare` 说明（首次获取需要网络）或下一节的离线重放入口；本手册
+第 1 步起不依赖该步骤。
+
+## 第 0B 步（可选）：从已有 raw cache 离线重放 prepare
+
+适用场景：你已经对某个 A 股标的完成过一次在线 `tve prepare`（或等价地
+持有一份该标的的 raw cache），之后希望全程离线复现研究。以下命令均不
+发起任何网络请求；CI 中的
+`tests/test_offline_journey_cli.py::test_cached_source_offline_replay_completes_the_surface_chain`
+在 socket 全禁条件下证明了这一点。
+
+前提（任一不满足都会失败关闭，退出码 2，且不写出任何输出文件）：
+
+1. raw cache 中该标的的**六个默认类别全部存在**：`company_metadata`、
+   `listing_metadata`、`market_quote`、`cash_flow_statement`、
+   `income_statement`、`balance_sheet`（缺任何一个会报
+   `no replayable cache entry for <sha256>`）。部分缓存（例如旧版本
+   只抓过部分类别）不能重放，也不会静默补抓。
+2. `--as-of` 不早于缓存信封的 `retrieved_at` 日期（更早会报
+   `was retrieved on ..., after as_of ...`）。
+3. 与首次运行一样显式提供公司上下文（`--name/--sector/
+   --reporting-currency` 或 `--company-json`），准备层不会猜测。
+
+```bash
+tve prepare 600519.SH \
+  --as-of <与首次获取一致或更晚的日期> \
+  --provider akshare \
+  --offline \
+  --cache-dir <与首次获取相同的 cache 目录> \
+  --name "<公司名>" \
+  --sector "<行业>" \
+  --reporting-currency CNY \
+  --output work/normalized.json
+```
+
+随后把第 1 步的 `--input fixtures/healthy_cash_cow.json` 换成
+`--input work/normalized.json`，其余步骤（第 1–4 步）完全不变。
+
+**校验点**：
+
+- 溯源链：`normalized.json` 中每条 `evidence_index[].source.document_id`
+  就是 raw cache 中对应信封文件的 sha256 文件名（`<cache-dir>/akshare/
+  <category>/<sha256>.json`），可直接审计到源。
+- 确定性：同一 cache 重复执行 `--offline` 重放，产出的
+  `normalized.json` 逐字节一致；后续 `analyze`/`surface build` 亦然。
+- 重放只读：`--offline` 重放不会改写 raw cache 中的任何信封。
+
+**边界**：信封按设计只做文件级完整性（可解析、身份可再推导）校验，
+不含 raw payload 内容摘要——自行手改信封内的行情数值不会被拦截。因
+此 raw cache 应作为操作员受控输入保管，与本仓库其他受保护输入同等
+对待。
 
 ## 第 1 步：确定性分析并产出三类工件
 
