@@ -1,14 +1,17 @@
+from turtle_value_engine import load_normalized_input
 from turtle_value_engine.gates import hard_gate_status, hard_gates_passed
 from turtle_value_engine.gates.cdc import evaluate_cdc_gate
+from turtle_value_engine.gates.eligibility import evaluate_eligibility_gate
 from turtle_value_engine.gates.through_return import evaluate_through_return_gate
 from turtle_value_engine.models import (
     CDCResult,
     ConfidenceLevel,
     GateStatus,
+    NormalizedCompanyInput,
     ThroughReturnResult,
 )
 
-from .stage_support import load_stage_results
+from .stage_support import PROFILE, load_stage_results
 
 
 def test_healthy_fixed_gates_without_assessment_block_composite():
@@ -69,3 +72,51 @@ def test_through_return_boundaries_use_profile_thresholds():
         ).status
         is GateStatus.PASS
     )
+
+
+def test_universe_missing_context_messages_name_the_point_in_time_period():
+    """Issue #71: a bare ``... is missing.`` reason contradicts the report.
+
+    A provider-normalized input carries fiscal-period balance-sheet facts
+    (``parent_equity`` at ``2024-12-31``/``2025-12-31``) but no point-in-time
+    context facts at the canonical ``AS_OF_<as_of>`` period.  The engine is
+    right to fail closed, but the operator-facing reason must say WHAT is
+    missing — the fact at the analysis point-in-time period — otherwise the
+    same report simultaneously shows the field with values and calls it
+    missing.
+    """
+
+    normalized_input = load_normalized_input("fixtures/healthy_cash_cow.json")
+    payload = normalized_input.model_dump(mode="json")
+    as_of = normalized_input.as_of.isoformat()
+    point_in_time_period = f"AS_OF_{as_of}"
+    payload["facts"] = [
+        fact
+        for fact in payload["facts"]
+        if fact["field"] not in {"listing_years", "special_treatment", "parent_equity"}
+        or fact["period"] != point_in_time_period
+    ] + [
+        {
+            "id": "fact-provider-parent-equity-fy2025",
+            "field": "parent_equity",
+            "value": 5_000.0,
+            "unit": "reported_currency_amount",
+            "currency": "CNY",
+            "period": "2025-12-31",
+            "source_evidence_ids": ["ev-healthy_cash_cow-balance"],
+            "estimated": False,
+            "confidence": 0.9,
+        }
+    ]
+    provider_shaped = NormalizedCompanyInput.model_validate(payload)
+
+    gate = evaluate_eligibility_gate(provider_shaped, PROFILE)
+
+    messages = {rule.rule_id: rule.message for rule in gate.rules}
+    assert gate.status is GateStatus.SPECIAL_REVIEW
+    for rule_id in (
+        "UNIVERSE.LISTING_YEARS",
+        "UNIVERSE.SPECIAL_TREATMENT",
+        "UNIVERSE.PARENT_EQUITY",
+    ):
+        assert point_in_time_period in messages[rule_id], messages[rule_id]
