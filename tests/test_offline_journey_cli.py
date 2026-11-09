@@ -725,9 +725,10 @@ def test_check_readiness_rejects_flags_it_cannot_honor_faithfully(
 # point-in-time context facts by hand, with dated evidence, directly in a
 # copy of the prepared normalized input.  The values mirror the runbook
 # recipe: listing_years derived from the 1999-11-10 listing date,
-# special_treatment false from a dated risk-warning-board snapshot, and
-# parent_equity from a SEPARATE dated interim observation — never a
-# relabeled fiscal-period value.
+# special_treatment false from a hypothetical complete AS_OF status register,
+# and parent_equity from a hypothetical same-day AS_OF equity statement.
+# These are SYNTHETIC fixture-only evidence, not real issuer disclosures or
+# relabeled fiscal/half-year values.
 _AS_OF = RETRIEVED_AT.date().isoformat()
 _AS_OF_PERIOD = f"AS_OF_{_AS_OF}"
 _FISCAL_PARENT_EQUITY = (6_800_000_000.0, 7_000_000_000.0)
@@ -754,15 +755,15 @@ _CONTEXT_EVIDENCE = [
         "direction": "SUPPORT",
         "strength": "E2",
         "statement": (
-            "Dated exchange risk-warning board snapshot retrieved "
-            "2026-09-11, before the analysis date: 600000 is absent from "
-            "the ST/*ST board, so special_treatment is false."
+            "Synthetic complete authority status registry, effective at "
+            "2026-09-12, explicitly classifies SH600000 as ordinary (not "
+            "ST/*ST) and declares complete coverage; fixture only."
         ),
         "source": {
             "type": "REGULATOR",
-            "title": "Risk-warning board membership snapshot (2026-09-11)",
-            "published_date": "2026-09-11",
-            "document_id": "risk-warning-board-2026-09-11",
+            "title": "Synthetic complete ST status as-of snapshot (fixture)",
+            "published_date": "2026-09-12",
+            "document_id": "synthetic-st-status-600000-2026-09-12",
         },
         "confidence": 0.85,
     },
@@ -771,17 +772,16 @@ _CONTEXT_EVIDENCE = [
         "direction": "SUPPORT",
         "strength": "E3",
         "statement": (
-            "2026 semi-annual report published 2026-08-29, before the "
-            "analysis date: equity attributable to the parent company's "
-            "shareholders was 7,250,000,000 CNY — a separate dated "
-            "observation, not the 2025-12-31 or 2024-12-31 annual figure."
+            "Synthetic company statement explicitly attests parent equity "
+            "of 7,250,000,000 CNY AS OF 2026-09-12 (effective date, not "
+            "just publication date), independent of the fiscal facts. "
+            "Fixture only; no real issuer disclosure is claimed."
         ),
         "source": {
-            "type": "INTERIM_REPORT",
-            "title": "Frozen journey company 2026 semi-annual report",
-            "published_date": "2026-08-29",
-            "document_id": "interim-2026-600000",
-            "page": 3,
+            "type": "COMPANY_ANNOUNCEMENT",
+            "title": "Synthetic AS_OF equity attestation (fixture)",
+            "published_date": "2026-09-12",
+            "document_id": "synthetic-equity-asof-600000-2026-09-12",
         },
         "confidence": 0.95,
     },
@@ -900,7 +900,20 @@ def test_hand_provided_as_of_context_facts_complete_the_universe_gate(
     evidence_by_id = {item["id"]: item for item in result["evidence_index"]}
     assert (
         evidence_by_id["evidence-context-equity-0001"]["source"]["document_id"]
-        == "interim-2026-600000"
+        == "synthetic-equity-asof-600000-2026-09-12"
+    )
+    # The fixture can illustrate an actual AS_OF claim, but never silently
+    # promote an interim/annual report period into an analysis-date fact.
+    assert evidence_by_id["evidence-context-equity-0001"]["source"]["type"] == (
+        "COMPANY_ANNOUNCEMENT"
+    )
+    assert (
+        evidence_by_id["evidence-context-equity-0001"]["source"]["published_date"]
+        == _AS_OF
+    )
+    assert (
+        evidence_by_id["evidence-context-st-0001"]["source"]["published_date"]
+        == _AS_OF
     )
     assert sorted(
         fact["period"]
