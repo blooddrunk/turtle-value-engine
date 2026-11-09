@@ -111,6 +111,122 @@ tve prepare 600519.SH \
 此 raw cache 应作为操作员受控输入保管，与本仓库其他受保护输入同等
 对待。
 
+## 第 0C 步（可选）：为宇宙门槛补齐带证据的时点上下文事实
+
+适用场景：分析结果中 `gates.universe` 的 `UNIVERSE.LISTING_YEARS`、
+`UNIVERSE.SPECIAL_TREATMENT` 或 `UNIVERSE.PARENT_EQUITY` 报
+`... is missing at the analysis point-in-time period AS_OF_<日期>`，而
+你作为操作员**持有可追溯、能证明该字段在分析日有效的证据**
+（例如注明状态有效日及覆盖范围的权威记录，或明确披露该分析日权益
+余额的独立文件），希望把这三个时点事实补进第 0B 步产出的
+normalized input，而不是让宇宙门槛保持 `SPECIAL_REVIEW`。
+
+这一步是纯手工证据工作。引擎永远不会把财年事实改标成时点事实，
+也永远不会替你猜测缺失值；三条宇宙规则在上下文缺失时保持失败
+关闭。补齐之后**只有宇宙门槛**可能变为 `PASS`，最终决策仍会因
+Business Quality 未评估等原因保持 `SPECIAL_REVIEW`——这是预期
+行为，不是流程错误。
+
+### 三种机制的边界
+
+- **provider 观测**（第 0B 步产物自带）：`listing_years` 只有当
+  listing metadata 行带有上市日期时才在 `AS_OF_<as_of>` 期间产出；
+  默认六类获取不含风控板类别，且即使获取，风控板 endpoint 也是正向
+  成员快照，无法证明"非 ST"，因此 `special_treatment` 保持缺失；
+  `parent_equity` 只以财年期间（如 `2025-12-31`）产出。重放财年
+  数据不会补齐时点上下文。
+- **手工补充的带证据事实**（本步骤）：直接向 normalized input 追加
+  `AS_OF_<as_of>` 期间的事实及其证据条目。这是本仓库支持的唯一
+  补齐途径，形状与 `fixtures/*.json` 中时点事实的登记方式一致。
+- **已接受的调整（accepted adjustment）**：只能修改**已存在**的
+  数值型源事实（`materialize_effective_input` 要求目标事实已在输入
+  中存在），不能新增一个缺失期间的事实，也不覆盖布尔/枚举字段；
+  它不是本场景的机制。
+
+### 操作步骤
+
+1. 复制 `work/normalized.json` 为 `work/normalized-context.json`。
+   永远不要改写 raw cache；保留原始文件便于对照审计（两个输入的
+   `analysis_id` 相同，靠内容哈希区分）。
+2. 在 `evidence_index` 数组末尾为每个待补字段追加**至少一条**证据
+   条目，在 `facts` 数组末尾追加对应事实条目。三条事实的 `period`
+   必须**逐字符等于** `AS_OF_<as_of>`（`as_of` 用输入自身的
+   `as_of` 字段值，不是当天日期）。
+3. 用 `--input work/normalized-context.json` 重新执行第 1 步。
+
+证据与事实条目的最小形状（完整字段见 `schemas/evidence.schema.json`
+与 `schemas/normalized-input.schema.json`；`id` 在 `facts` 与
+`evidence_index` 各自列表内必须唯一）：
+
+```json
+{
+  "evidence_index": [
+    {
+      "id": "evidence-context-equity-0001",
+      "direction": "SUPPORT",
+      "strength": "E3",
+      "statement": "合成示例：假设独立文件明确证明归母权益在 2026-09-12 为 7,250,000,000 元；这不是实际上市公司披露。",
+      "source": {
+        "type": "COMPANY_ANNOUNCEMENT",
+        "title": "<公司> 分析日权益时点证明（合成示例）",
+        "published_date": "2026-09-12",
+        "document_id": "<你留存的真实文件标识>",
+        "locator": "<能够定位到该时点权益的段落或表格>"
+      },
+      "confidence": 0.95
+    }
+  ],
+  "facts": [
+    {
+      "id": "fact-context-parent-equity-0001",
+      "field": "parent_equity",
+      "value": 7250000000,
+      "unit": "reported_currency_amount",
+      "currency": "CNY",
+      "period": "AS_OF_2026-09-12",
+      "source_evidence_ids": ["evidence-context-equity-0001"],
+      "confidence": 0.95
+    }
+  ]
+}
+```
+
+以上 JSON 是**合成形状示例**，不是 SH600000 或任何真实公司的
+权益披露，也不能把示例数值直接填入生产研究输入。若没有独立证据能
+证明权益**在分析日这个时点**的数值，应保留缺失和 `SPECIAL_REVIEW`；
+财报在分析日前公开只证明其信息当时可知，并不改变其原始报告期。
+
+### 诚实性责任（引擎无法代劳）
+
+- `parent_equity` 必须由**明确以分析日为有效日期**的独立观测支持。
+  季报、半年报或年报即使在分析日前发布，通常也只报告其原始期末权益；
+  **禁止**将季度末、半年末或 `2025-12-31` 等财年值改标为分析日
+  时点值来满足门槛。若仅有这种报告则保持缺失。引擎不会自动
+  审查有效日期或识别改标；事实 → 证据 → 来源的真实性属于操作员责任。
+- 每条证据的 `source.published_date` 不应晚于 `as_of`。引擎不校验
+  手工证据的日期，但引用晚于分析日的来源构成未来数据泄漏，会在
+  审计中暴露。
+- `special_treatment=false` 的证据必须能支撑"分析日当天不是 ST/*ST"
+  （状态有效日期、权威来源、全量覆盖范围）。仅凭正向成员快照中
+  **查不到该股票**，又不能证明快照完整性和时点有效性时，不得反推
+  `false`；保持缺失。
+- `listing_years` 由上市日期推导：`(as_of - 上市日期).days / 365.25`，
+  证据条目应注明上市日期及其来源文件。
+
+### 预期结果与失败关闭行为
+
+- 成功：三条 `UNIVERSE.*` 规则变为 `PASS`，各规则的 `evidence_ids`
+  指向你登记的证据；`decision.state` 仍为 `SPECIAL_REVIEW`（只要
+  Business Quality 未评估或其他 gate 未通过）；重复执行
+  `tve analyze` 输出逐字节一致。
+- 失败关闭（退出码 2，不写出任何输出文件）：同字段同期间出现重复
+  事实、`source_evidence_ids` 引用不存在的证据 ID、标量类型错误
+  （如 `special_treatment` 给字符串、`listing_years` 给字符串）。
+- 静默忽略（不报错但**不生效**，宇宙规则按 `AS_OF_<as_of>` 查找并
+  继续报缺失）：`period` 写错（如写成 `2026-09-12`、别的日期或
+  别的标签）的事实。请核对缺失消息中点名的期间与你的 `period`
+  逐字符一致。
+
 ## 第 1 步：确定性分析并产出三类工件
 
 ```bash
@@ -195,9 +311,10 @@ curl -fsS "http://127.0.0.1:8787/v1/surfaces/${SURFACE_ID}" | head -c 400
   `2024-12-31`/`2025-12-31` 这类**财年期间**事实（报告的 facts 列表里
   `parent_equity` 因此有值），缺少时点上下文事实，所以这些原因是
   预期的失败关闭行为，**不是数据丢失或引擎缺陷**。要解除该原因，
-  需要为 `AS_OF_<as_of>` 期间补充带证据的时点事实（如
-  `fixtures/healthy_cash_cow.json` 中 `listing_years`、`parent_equity`、
-  `special_treatment` 都登记在其 `AS_OF_` 期间），而不是重新抓取财年数据。
+  需要为 `AS_OF_<as_of>` 期间补充带证据的时点事实（操作步骤与
+  诚实性责任见第 0C 步；`fixtures/healthy_cash_cow.json` 中
+  `listing_years`、`parent_equity`、`special_treatment` 都登记在其
+  `AS_OF_` 期间，可作为形状参考），而不是重新抓取财年数据。
 - 快照的 `historical_status.claim_state == "NOT_AVAILABLE"`：个人研究
   路径不携带历史语料声明。
 
