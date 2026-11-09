@@ -32,6 +32,15 @@ replay run, and an adapter version bump (``AKSHARE_ADAPTER_VERSION`` moved
 ``no replayable cache entry for <digest>`` misses that name digests existing
 nowhere in the operator's cache directory, while the still-valid envelopes
 sit in plain sight under the same provider/category directories.
+
+Issue #73 pins the runbook step-0C completion recipe (characterization, not
+a defect regression — Gate A proved the machinery already works): an
+operator holding dated evidence completes the three universe point-in-time
+context facts by hand in a copy of the prepared normalized input, and the
+real analyze CLI turns exactly the universe gate PASS while every other
+fail-closed boundary (business quality NOT_EVALUATED, SPECIAL_REVIEW
+decision, duplicate/unresolved/integrity rejection, wrong-period-label
+silence, byte determinism, raw-cache immutability) is preserved.
 """
 
 import json
@@ -710,3 +719,276 @@ def test_check_readiness_rejects_flags_it_cannot_honor_faithfully(
         assert "--check-readiness" in stderr
         assert flags[0] in stderr
     assert not (tmp_path / "normalized.json").exists()
+
+
+# Issue #73 runbook step 0C: the operator completes the three universe
+# point-in-time context facts by hand, with dated evidence, directly in a
+# copy of the prepared normalized input.  The values mirror the runbook
+# recipe: listing_years derived from the 1999-11-10 listing date,
+# special_treatment false from a dated risk-warning-board snapshot, and
+# parent_equity from a SEPARATE dated interim observation — never a
+# relabeled fiscal-period value.
+_AS_OF = RETRIEVED_AT.date().isoformat()
+_AS_OF_PERIOD = f"AS_OF_{_AS_OF}"
+_FISCAL_PARENT_EQUITY = (6_800_000_000.0, 7_000_000_000.0)
+_CONTEXT_EVIDENCE = [
+    {
+        "id": "evidence-context-listing-0001",
+        "direction": "SUPPORT",
+        "strength": "E3",
+        "statement": (
+            "Exchange listing record: the listing date is 1999-11-10, so "
+            "listing_years at the analysis date is "
+            "(2026-09-12 - 1999-11-10).days / 365.25 = 26.8392 years."
+        ),
+        "source": {
+            "type": "EXCHANGE_FILING",
+            "title": "Exchange listing record for 600000",
+            "published_date": "1999-11-10",
+            "document_id": "listing-record-600000-1999-11-10",
+        },
+        "confidence": 0.95,
+    },
+    {
+        "id": "evidence-context-st-0001",
+        "direction": "SUPPORT",
+        "strength": "E2",
+        "statement": (
+            "Dated exchange risk-warning board snapshot retrieved "
+            "2026-09-11, before the analysis date: 600000 is absent from "
+            "the ST/*ST board, so special_treatment is false."
+        ),
+        "source": {
+            "type": "REGULATOR",
+            "title": "Risk-warning board membership snapshot (2026-09-11)",
+            "published_date": "2026-09-11",
+            "document_id": "risk-warning-board-2026-09-11",
+        },
+        "confidence": 0.85,
+    },
+    {
+        "id": "evidence-context-equity-0001",
+        "direction": "SUPPORT",
+        "strength": "E3",
+        "statement": (
+            "2026 semi-annual report published 2026-08-29, before the "
+            "analysis date: equity attributable to the parent company's "
+            "shareholders was 7,250,000,000 CNY — a separate dated "
+            "observation, not the 2025-12-31 or 2024-12-31 annual figure."
+        ),
+        "source": {
+            "type": "INTERIM_REPORT",
+            "title": "Frozen journey company 2026 semi-annual report",
+            "published_date": "2026-08-29",
+            "document_id": "interim-2026-600000",
+            "page": 3,
+        },
+        "confidence": 0.95,
+    },
+]
+_CONTEXT_FACTS = [
+    {
+        "id": "fact-context-listing-years-0001",
+        "field": "listing_years",
+        "value": 26.8392,
+        "unit": "years",
+        "period": _AS_OF_PERIOD,
+        "source_evidence_ids": ["evidence-context-listing-0001"],
+        "confidence": 0.95,
+    },
+    {
+        "id": "fact-context-special-treatment-0001",
+        "field": "special_treatment",
+        "value": False,
+        "period": _AS_OF_PERIOD,
+        "source_evidence_ids": ["evidence-context-st-0001"],
+        "confidence": 0.85,
+    },
+    {
+        "id": "fact-context-parent-equity-0001",
+        "field": "parent_equity",
+        "value": 7_250_000_000.0,
+        "unit": "reported_currency_amount",
+        "currency": "CNY",
+        "period": _AS_OF_PERIOD,
+        "source_evidence_ids": ["evidence-context-equity-0001"],
+        "confidence": 0.95,
+    },
+]
+
+
+def _completed_context_input(source: Path, target: Path) -> None:
+    """Apply the runbook 0C edit: append dated evidence plus AS_OF facts."""
+
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    payload["evidence_index"] = payload["evidence_index"] + _CONTEXT_EVIDENCE
+    payload["facts"] = payload["facts"] + _CONTEXT_FACTS
+    target.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def test_hand_provided_as_of_context_facts_complete_the_universe_gate(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    cache_dir = tmp_path / "raw-cache"
+    _populate_frozen_raw_cache(cache_dir)
+    cache_before = _cache_snapshot(cache_dir)
+    prepared = tmp_path / "normalized.json"
+    assert main(_prepare_offline_argv(cache_dir, prepared)) == 0
+    capsys.readouterr()
+
+    # The runbook honesty invariant is representable in the test input
+    # itself: the point-in-time parent equity is a distinct dated value,
+    # never one of the provider's fiscal-period figures.
+    fiscal_values = {
+        fact["value"]
+        for fact in json.loads(prepared.read_text(encoding="utf-8"))["facts"]
+        if fact["field"] == "parent_equity"
+    }
+    assert fiscal_values == set(_FISCAL_PARENT_EQUITY)
+    assert 7_250_000_000.0 not in fiscal_values
+
+    completed = tmp_path / "normalized-context.json"
+    _completed_context_input(prepared, completed)
+
+    analysis = tmp_path / "analysis-context.json"
+    argv = [
+        "analyze",
+        "--input",
+        str(completed),
+        "--profile",
+        "strict-v1",
+        "--output",
+        str(analysis),
+    ]
+    assert main(argv) == 0
+    capsys.readouterr()
+    result = json.loads(analysis.read_text(encoding="utf-8"))
+
+    # Only the universe gate completes; every other fail-closed boundary is
+    # preserved and the decision cannot become an automatic pass.
+    rules = {
+        rule["rule_id"]: rule for rule in result["gates"]["universe"]["rules"]
+    }
+    assert result["gates"]["universe"]["status"] == "PASS"
+    assert rules["UNIVERSE.LISTING_YEARS"]["status"] == "PASS"
+    assert rules["UNIVERSE.LISTING_YEARS"]["evidence_ids"] == [
+        "evidence-context-listing-0001"
+    ]
+    assert rules["UNIVERSE.SPECIAL_TREATMENT"]["status"] == "PASS"
+    assert rules["UNIVERSE.SPECIAL_TREATMENT"]["actual"] is False
+    assert rules["UNIVERSE.PARENT_EQUITY"]["status"] == "PASS"
+    assert rules["UNIVERSE.PARENT_EQUITY"]["actual"] == 7_250_000_000.0
+    assert rules["UNIVERSE.PARENT_EQUITY"]["evidence_ids"] == [
+        "evidence-context-equity-0001"
+    ]
+    assert result["gates"]["business_quality"]["status"] == "NOT_EVALUATED"
+    assert result["decision"]["state"] == "SPECIAL_REVIEW"
+    assert "BUSINESS_QUALITY_NOT_EVALUATED" in result["flags"]
+
+    # The audit chain keeps both sides auditable: the operator facts and
+    # evidence are carried into the analysis unchanged, and the provider's
+    # fiscal parent-equity facts stay at their fiscal periods — the engine
+    # never relabels a fiscal value as a point-in-time value.
+    facts_by_id = {fact["id"]: fact for fact in result["facts"]}
+    assert facts_by_id["fact-context-parent-equity-0001"]["period"] == _AS_OF_PERIOD
+    assert facts_by_id["fact-context-parent-equity-0001"]["source_evidence_ids"] == [
+        "evidence-context-equity-0001"
+    ]
+    evidence_by_id = {item["id"]: item for item in result["evidence_index"]}
+    assert (
+        evidence_by_id["evidence-context-equity-0001"]["source"]["document_id"]
+        == "interim-2026-600000"
+    )
+    assert sorted(
+        fact["period"]
+        for fact in result["facts"]
+        if fact["field"] == "parent_equity"
+    ) == ["2024-12-31", "2025-12-31", _AS_OF_PERIOD]
+
+    # Deterministic rerun and an untouched raw cache.
+    replay = tmp_path / "analysis-context-replay.json"
+    assert main([*argv[: -1], str(replay)]) == 0
+    capsys.readouterr()
+    assert replay.read_bytes() == analysis.read_bytes()
+    assert _cache_snapshot(cache_dir) == cache_before
+
+
+def test_hand_provided_context_facts_keep_integrity_and_period_failures_closed(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    cache_dir = tmp_path / "raw-cache"
+    _populate_frozen_raw_cache(cache_dir)
+    prepared = tmp_path / "normalized.json"
+    assert main(_prepare_offline_argv(cache_dir, prepared)) == 0
+    capsys.readouterr()
+
+    # A duplicate field/period fact never resolves to a silent winner: the
+    # input is rejected before any output file is written.  The duplicate
+    # carries a distinct id, so the failure is the field/period collision
+    # itself, not the id-uniqueness validator.
+    duplicated = tmp_path / "normalized-duplicate.json"
+    _completed_context_input(prepared, duplicated)
+    payload = json.loads(duplicated.read_text(encoding="utf-8"))
+    conflicting_fact = dict(payload["facts"][-1])
+    conflicting_fact["id"] = "fact-context-parent-equity-0002"
+    payload["facts"].append(conflicting_fact)
+    duplicated.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    output = tmp_path / "analysis-duplicate.json"
+    assert (
+        main(["analyze", "--input", str(duplicated), "--output", str(output)]) == 2
+    )
+    stderr = capsys.readouterr().err
+    assert "duplicate normalized fact" in stderr
+    assert not output.exists()
+
+    # An unknown evidence reference fails closed the same way.
+    unresolved = tmp_path / "normalized-unresolved.json"
+    _completed_context_input(prepared, unresolved)
+    payload = json.loads(unresolved.read_text(encoding="utf-8"))
+    payload["facts"][-1]["source_evidence_ids"] = ["evidence-does-not-exist"]
+    unresolved.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    assert (
+        main(["analyze", "--input", str(unresolved), "--output", str(output)]) == 2
+    )
+    stderr = capsys.readouterr().err
+    assert "undefined evidence ID reference" in stderr
+    assert not output.exists()
+
+    # A wrong period label (fiscal-style instead of AS_OF_) is not an error,
+    # but it never satisfies the point-in-time lookup: the universe gate
+    # keeps failing closed and names the exact expected period.
+    mislabeled = tmp_path / "normalized-mislabeled.json"
+    _completed_context_input(prepared, mislabeled)
+    payload = json.loads(mislabeled.read_text(encoding="utf-8"))
+    payload["facts"] = [
+        {**fact, "period": _AS_OF} if fact["id"].startswith("fact-context-") else fact
+        for fact in payload["facts"]
+    ]
+    mislabeled.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    mislabeled_output = tmp_path / "analysis-mislabeled.json"
+    assert (
+        main(
+            ["analyze", "--input", str(mislabeled), "--output", str(mislabeled_output)]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    result = json.loads(mislabeled_output.read_text(encoding="utf-8"))
+    assert result["gates"]["universe"]["status"] == "SPECIAL_REVIEW"
+    equity_rule = next(
+        rule
+        for rule in result["gates"]["universe"]["rules"]
+        if rule["rule_id"] == "UNIVERSE.PARENT_EQUITY"
+    )
+    assert equity_rule["status"] == "SPECIAL_REVIEW"
+    assert _AS_OF_PERIOD in equity_rule["message"]
