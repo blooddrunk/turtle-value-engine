@@ -311,7 +311,7 @@ def evaluate_business_quality_hard_rules(
     """Evaluate BG01--BG05 without using any narrative or external data."""
 
     book = FactBook(normalized_input.facts)
-    period = book.as_of_period(normalized_input.as_of)
+    period = book.exact_as_of_period(normalized_input.as_of)
     config = profile.business_quality.hard_gates
     rules: list[GateRule] = []
 

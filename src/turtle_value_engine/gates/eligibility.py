@@ -19,7 +19,7 @@ def evaluate_eligibility_gate(
     """Evaluate listing age, special-treatment and model eligibility."""
 
     book = FactBook(normalized_input.facts)
-    period = book.as_of_period(normalized_input.as_of)
+    period = book.exact_as_of_period(normalized_input.as_of)
     rules: list[GateRule] = []
     confidence = normalized_input.data_quality.confidence
 

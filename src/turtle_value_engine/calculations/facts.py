@@ -97,6 +97,13 @@ class FactBook:
         A normalized payload produced by this repository uses the canonical
         label.  The fallback accepts a different stable ``AS_OF_`` label for
         hand-prepared inputs, but never guesses a fiscal-year fact instead.
+        This serves callers that must resolve ``the`` point-in-time label of
+        a fact collection without asserting a requested analysis date (the
+        standalone calculation builders use a sentinel date for exactly
+        that).  Callers that know the requested ``as_of`` — every gate and
+        analysis-time consumer — must use :meth:`exact_as_of_period` instead
+        so a merely present ``AS_OF_`` label can never stand in for the
+        analysis-date context.
         """
 
         expected = f"AS_OF_{as_of.isoformat() if isinstance(as_of, date) else as_of}"
@@ -113,6 +120,23 @@ class FactBook:
         raise FactLookupError(
             f"normalized input has no AS_OF period for {expected!r}; candidates: {candidates}"
         )
+
+    def exact_as_of_period(self, as_of: date | str) -> str:
+        """Return the exact ``AS_OF_<as_of>`` label for analysis-time lookups.
+
+        Point-in-time rules that evaluate a requested analysis date may read
+        facts only at the canonical label for that date: any other
+        ``AS_OF_`` label — a different (e.g. prior-day) date, or a
+        listing-suffixed additional-listing label — is not analysis-date
+        context, stays silently unlooked-up, and the rules keep failing
+        closed as missing, exactly like the runbook 0C contract documents.
+        A payload with no ``AS_OF_`` fact period at all remains structurally
+        unresolvable and fails closed here like :meth:`as_of_period`.
+        """
+
+        if not any(period.startswith("AS_OF_") for _, period in self._indexed):
+            raise FactLookupError("normalized input has no AS_OF fact period")
+        return f"AS_OF_{as_of.isoformat() if isinstance(as_of, date) else as_of}"
 
 
 def numeric_value(reference: FactReference | None, *, field: str) -> float | None:
