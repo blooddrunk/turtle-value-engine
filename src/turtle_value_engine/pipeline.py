@@ -1,6 +1,8 @@
 """Deterministic stage entry points and CompanyAnalysis orchestration."""
 
+import re
 from collections.abc import Iterable, Sequence
+from datetime import date
 
 from turtle_value_engine.calculations import (
     build_business_quality_input_from_normalized_input,
@@ -68,6 +70,11 @@ _MANUAL_REVIEW_VALUATION_FLAGS = frozenset(
         "VALUATION_CRITICAL_INPUT_MISSING",
     }
 )
+# Same token shape as the preparation boundary's point-in-time rule: a full
+# ISO or compact calendar date embedded in a period label.  Labels without an
+# embedded full date (e.g. ``FY2025``) carry no mechanically derivable order
+# and stay accepted.
+_PERIOD_DATE_RE = re.compile(r"(?<!\d)(?:\d{4}-\d{2}-\d{2}|\d{8})(?!\d)")
 
 
 def _unique(items: Iterable[str]) -> list[str]:
@@ -83,6 +90,55 @@ def _worst_confidence(levels: Iterable[ConfidenceLevel | None]) -> ConfidenceLev
     if not available:
         return None
     return max(available, key=_CONFIDENCE_ORDER.__getitem__)
+
+
+def _period_date(period: str) -> date | None:
+    """Return the full calendar date embedded in a period label, if any."""
+
+    match = _PERIOD_DATE_RE.search(period)
+    if match is None:
+        return None
+    token = match.group(0)
+    try:
+        if "-" in token:
+            return date.fromisoformat(token)
+        return date(int(token[:4]), int(token[4:6]), int(token[6:8]))
+    except ValueError:
+        return None
+
+
+def _validate_point_in_time_integrity(normalized_input: NormalizedCompanyInput) -> None:
+    """Reject mechanically provable future data at the analyze boundary.
+
+    This mirrors the preparation boundary's point-in-time rule for inputs the
+    engine did not produce itself (runbook step 0C hand-completed context):
+    no fact period may embed a calendar date after ``as_of``, and no evidence
+    item may claim a publication date after ``as_of``.  Both are provable from
+    the payload alone, before any source-semantics judgment.  Genuinely
+    unknown dates (``null`` published dates, labels without an embedded full
+    date) stay preserved as unknown.  What a source *means* (effective-date
+    relabeling, positive-membership completeness) is not derivable from the
+    data and remains the operator's documented responsibility.
+    """
+
+    as_of = normalized_input.as_of
+    violations: list[str] = []
+    for fact in normalized_input.facts:
+        fact_date = _period_date(fact.period)
+        if fact_date is not None and fact_date > as_of:
+            violations.append(
+                f"normalized fact {fact.field!r}/{fact.period!r} is after "
+                f"as_of {as_of.isoformat()}"
+            )
+    for evidence in normalized_input.evidence_index:
+        published_date = evidence.source.published_date
+        if published_date is not None and published_date > as_of:
+            violations.append(
+                f"evidence {evidence.id!r} publication date "
+                f"{published_date.isoformat()} is after as_of {as_of.isoformat()}"
+            )
+    if violations:
+        raise ValueError("; ".join(violations))
 
 
 def _resolve_cyclical_mode(
@@ -420,9 +476,12 @@ def run_analyze(
     The input facts are projected into the existing calculation modules in
     dependency order, then hard gates are evaluated before valuation.  No
     provider, network call, LLM judgment or qualitative score inference is
-    performed here.  A structured ``business_quality`` result may be supplied
-    by an offline caller; when it is absent the corresponding gate remains
-    ``NOT_EVALUATED`` and the final decision cannot become an automatic pass.
+    performed here.  Mechanically provable future data (fact periods or
+    evidence publication dates after ``as_of``) is rejected before any
+    calculation runs.  A structured ``business_quality`` result may be
+    supplied by an offline caller; when it is absent the corresponding gate
+    remains ``NOT_EVALUATED`` and the final decision cannot become an
+    automatic pass.
     """
 
     active_profile = profile or load_profile(normalized_input.profile_id)
@@ -432,6 +491,7 @@ def run_analyze(
             f"{normalized_input.profile_id!r} does not match active profile "
             f"{active_profile.profile.id!r}"
         )
+    _validate_point_in_time_integrity(normalized_input)
     _validate_business_quality_lineage(normalized_input, business_quality)
 
     cyclical_mode = _resolve_cyclical_mode(normalized_input, cyclical)

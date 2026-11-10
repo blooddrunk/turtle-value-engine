@@ -41,12 +41,24 @@ real analyze CLI turns exactly the universe gate PASS while every other
 fail-closed boundary (business quality NOT_EVALUATED, SPECIAL_REVIEW
 decision, duplicate/unresolved/integrity rejection, wrong-period-label
 silence, byte determinism, raw-cache immutability) is preserved.
+
+Issue #75 adds the temporal-integrity leg: the runbook 0C edit path feeds
+``tve analyze`` directly, and Gate A reproduced on pristine post-#74 main
+that the analyze boundary enforced none of the prepare boundary's
+point-in-time rules — context evidence published AFTER ``as_of`` flipped
+``UNIVERSE.PARENT_EQUITY`` and ``UNIVERSE.SPECIAL_TREATMENT`` from
+SPECIAL_REVIEW to PASS (exit 0, universe PASS), and a future-dated
+``AS_OF_`` fact period label resolved through the ``FactBook.as_of_period``
+single-candidate fallback.  Both are mechanically provable future-data
+leakage; the analyze boundary now fails closed on exactly the rule the
+prepare boundary already enforces, while genuinely unknown dates (``null``)
+and earlier hand-prepared point-in-time labels stay preserved.
 """
 
 import json
 import socket
 import urllib.request
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -1005,3 +1017,79 @@ def test_hand_provided_context_facts_keep_integrity_and_period_failures_closed(
     )
     assert equity_rule["status"] == "SPECIAL_REVIEW"
     assert _AS_OF_PERIOD in equity_rule["message"]
+
+
+# Issue #75: the analyze boundary must reject mechanically provable future
+# data in hand-completed inputs.  The prepare boundary already enforces the
+# same rule (preparation._validate_normalized_point_in_time); these tests
+# pin the mirrored guard at the ``tve analyze`` boundary that Gate A proved
+# missing on pristine post-#74 main.
+def test_future_published_context_evidence_fails_closed_at_analyze(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    cache_dir = tmp_path / "raw-cache"
+    _populate_frozen_raw_cache(cache_dir)
+    cache_before = _cache_snapshot(cache_dir)
+    prepared = tmp_path / "normalized.json"
+    assert main(_prepare_offline_argv(cache_dir, prepared)) == 0
+    capsys.readouterr()
+
+    # Runbook 0C completion, except the equity and ST evidence claim a
+    # publication date 30 days AFTER the analysis as_of.  A source published
+    # after as_of cannot be knowable at as_of: this is mechanically provable
+    # future-data leakage, so the analyze boundary must fail closed instead
+    # of turning the point-in-time universe rules into PASS.
+    future = (RETRIEVED_AT.date() + timedelta(days=30)).isoformat()
+    payload = json.loads(prepared.read_text(encoding="utf-8"))
+    evidence = json.loads(json.dumps(_CONTEXT_EVIDENCE))
+    for item in evidence:
+        if item["id"] in {"evidence-context-equity-0001", "evidence-context-st-0001"}:
+            item["source"]["published_date"] = future
+    payload["evidence_index"] = payload["evidence_index"] + evidence
+    payload["facts"] = payload["facts"] + _CONTEXT_FACTS
+    completed = tmp_path / "normalized-future-evidence.json"
+    completed.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+    output = tmp_path / "analysis-future-evidence.json"
+    assert main(["analyze", "--input", str(completed), "--output", str(output)]) == 2
+    stderr = capsys.readouterr().err
+    # Every future-published evidence item is named, so a hand-editting
+    # operator fixes all of them in one round trip.
+    assert "evidence-context-st-0001" in stderr
+    assert "evidence-context-equity-0001" in stderr
+    assert f"publication date {future} is after as_of {_AS_OF}" in stderr
+    assert not output.exists()
+    assert _cache_snapshot(cache_dir) == cache_before
+
+
+def test_future_dated_fact_period_label_fails_closed_at_analyze(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    # The frozen hand-prepared fixture resolves its point-in-time lookups at
+    # AS_OF_<as_of>.  Relabeling every point-in-time fact one day past as_of
+    # must not slide the whole point-in-time context through the
+    # single-AS_OF-candidate fallback of FactBook.as_of_period.
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    as_of = payload["as_of"]
+    future_period = f"AS_OF_{(date.fromisoformat(as_of) + timedelta(days=1)).isoformat()}"
+    payload["facts"] = [
+        {**fact, "period": future_period}
+        if fact["period"] == f"AS_OF_{as_of}"
+        else fact
+        for fact in payload["facts"]
+    ]
+    future_input = tmp_path / "healthy-future-period.json"
+    future_input.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+    output = tmp_path / "analysis-future-period.json"
+    assert main(["analyze", "--input", str(future_input), "--output", str(output)]) == 2
+    stderr = capsys.readouterr().err
+    assert future_period in stderr
+    assert f"is after as_of {as_of}" in stderr
+    assert not output.exists()
