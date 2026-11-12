@@ -7,7 +7,33 @@ from turtle_value_engine.models.net_cash import NetCashResult
 from .common import make_gate_result, metric_evidence_ids
 
 
-def evaluate_balance_sheet_gate(result: NetCashResult, profile: RuleProfile) -> GateResult:
+def _coverage_unavailable_message(
+    base_message: str, result: NetCashResult, as_of_period: str | None
+) -> str:
+    """Name the missing coverage denominator when the operator omitted it.
+
+    ``debt_due_within_one_year`` absent at the analysis point-in-time period
+    (including a wrong period label) is a mechanical registration gap, unlike
+    an explicitly null fact or coverage blocked by unresolved cash
+    authenticity; only the absent case names the canonical fact and period,
+    the same ``... is missing at the analysis point-in-time period`` shape as
+    the universe/governance rules.
+    """
+
+    if "DEBT_DUE_WITHIN_ONE_YEAR_MISSING" not in result.flags:
+        return base_message
+    period_suffix = f" {as_of_period}" if as_of_period is not None else ""
+    return (
+        f"{base_message[:-1]}: debt_due_within_one_year is missing at the "
+        f"analysis point-in-time period{period_suffix}."
+    )
+
+
+def evaluate_balance_sheet_gate(
+    result: NetCashResult,
+    profile: RuleProfile,
+    as_of_period: str | None = None,
+) -> GateResult:
     """Evaluate leverage, coverage and refinancing rules independently."""
 
     rules: list[GateRule] = []
@@ -101,7 +127,9 @@ def evaluate_balance_sheet_gate(result: NetCashResult, profile: RuleProfile) -> 
     stress_coverage = result.stress_coverage
     if stress_coverage is None:
         stress_status = GateStatus.SPECIAL_REVIEW
-        stress_message = "Stress coverage is unavailable."
+        stress_message = _coverage_unavailable_message(
+            "Stress coverage is unavailable.", result, as_of_period
+        )
     elif stress_coverage < profile.net_cash.stress.fail_below:
         stress_status = GateStatus.FAIL
         stress_message = "Stress coverage is below the configured failure floor."
@@ -125,7 +153,9 @@ def evaluate_balance_sheet_gate(result: NetCashResult, profile: RuleProfile) -> 
     liquidity_coverage = result.liquidity_coverage
     if liquidity_coverage is None:
         liquidity_status = GateStatus.SPECIAL_REVIEW
-        liquidity_message = "Liquidity coverage is unavailable."
+        liquidity_message = _coverage_unavailable_message(
+            "Liquidity coverage is unavailable.", result, as_of_period
+        )
     elif liquidity_coverage < profile.net_cash.liquidity_coverage.fail_below:
         liquidity_status = GateStatus.FAIL
         liquidity_message = "Liquidity coverage is below the configured failure floor."

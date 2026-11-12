@@ -48,7 +48,11 @@ def evaluate_hard_gates(
     return Gates(
         universe=evaluate_eligibility_gate(normalized_input, active_profile),
         balance_sheet=(
-            evaluate_balance_sheet_gate(net_cash_result, active_profile)
+            evaluate_balance_sheet_gate(
+                net_cash_result,
+                active_profile,
+                as_of_period=f"AS_OF_{normalized_input.as_of.isoformat()}",
+            )
             if net_cash_result is not None
             else result_or_not_evaluated("Net-cash stage has not been run.")
         ),

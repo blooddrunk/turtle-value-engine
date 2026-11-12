@@ -366,8 +366,16 @@ def calculate_net_cash(inputs: NetCashInput, profile: RuleProfile) -> NetCashRes
     elif inputs.normalized_parent_core_cdc is not None:
         flags.append("EX_CASH_CDC_YIELD_UNAVAILABLE")
 
-    liquidity_coverage = _coverage(
-        None
+    if inputs.debt_due_within_one_year is None and (
+        "debt_due_within_one_year" not in inputs.source_evidence_ids
+    ):
+        # Absent at the analysis point-in-time period (a wrong period label
+        # reads as absent); an explicitly null fact keeps its distinct
+        # unresolved semantics and no flag, so the gate can name only the
+        # mechanical registration gap.
+        flags.append("DEBT_DUE_WITHIN_ONE_YEAR_MISSING")
+
+    liquidity_coverage = _coverage(        None
         if owner_accessible_cash is None or inputs.normalized_parent_core_cdc is None
         else owner_accessible_cash + _decimal(inputs.normalized_parent_core_cdc),
         inputs.debt_due_within_one_year,
