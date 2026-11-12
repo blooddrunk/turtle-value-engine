@@ -154,6 +154,22 @@ Business Quality 未评估等原因保持 `SPECIAL_REVIEW`——这是预期
 `null` 的事实保持原有的一般性措辞（`unavailable or unresolved` /
 `is missing`），以区分"根本没有该期间事实"与"显式未知"。
 
+### 净现金覆盖分母时点事实同理
+
+`debt_due_within_one_year`（一年内到期债务，压力/流动性覆盖比率的分母）
+同样是只读取逐字符等于 `AS_OF_<as_of>` 标签的时点事实（Issue #83）。
+当该事实缺失或期间标签写错时，`NET_CASH.STRESS_COVERAGE` /
+`NET_CASH.LIQUIDITY_COVERAGE` 会以
+`... is unavailable: debt_due_within_one_year is missing at the analysis
+point-in-time period AS_OF_<日期>.` 报告缺失并附带
+`DEBT_DUE_WITHIN_ONE_YEAR_MISSING` 标志——与 `UNIVERSE.*` /
+`GOVERNANCE.*` 缺失消息同一形状。补齐方式一致：在 `AS_OF_<as_of>`
+期间登记带证据的事实。已登记但显式为 `null` 的事实、以及覆盖比率因
+受限现金真实性未决（`owner_accessible_cash` 为空，如
+`cash_rich_dying_business` 场景）而不可得的情况，都保持原有的一般性
+措辞 `... is unavailable.`——后者需要真实的人证证据而不是机械补数，
+两类原因因此保持可区分。
+
 ### 操作步骤
 
 1. 复制 `work/normalized.json` 为 `work/normalized-context.json`。
