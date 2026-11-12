@@ -2,6 +2,7 @@ from turtle_value_engine import load_normalized_input
 from turtle_value_engine.gates import hard_gate_status, hard_gates_passed
 from turtle_value_engine.gates.cdc import evaluate_cdc_gate
 from turtle_value_engine.gates.eligibility import evaluate_eligibility_gate
+from turtle_value_engine.gates.governance import evaluate_governance_data_quality_gate
 from turtle_value_engine.gates.through_return import evaluate_through_return_gate
 from turtle_value_engine.models import (
     CDCResult,
@@ -120,3 +121,66 @@ def test_universe_missing_context_messages_name_the_point_in_time_period():
         "UNIVERSE.PARENT_EQUITY",
     ):
         assert point_in_time_period in messages[rule_id], messages[rule_id]
+
+
+def test_governance_missing_context_messages_name_the_point_in_time_period():
+    """Issue #81: governance point-in-time facts must fail closed actionably.
+
+    ``GOVERNANCE.ACCOUNTING_OPINION`` and ``GOVERNANCE.RISK_LEVEL`` read only
+    the exact ``AS_OF_<as_of>`` label, just like the universe rules.  When the
+    operator supplied the fact at a wrong (e.g. fiscal or day-before) period
+    label, the reason must still name the canonical point-in-time period —
+    the same ``... is missing at the analysis point-in-time period`` shape as
+    ``UNIVERSE.*`` — so the operator knows which label to register instead of
+    re-pulling fiscal-year data.
+    """
+
+    normalized_input = load_normalized_input("fixtures/healthy_cash_cow.json")
+    payload = normalized_input.model_dump(mode="json")
+    as_of = normalized_input.as_of.isoformat()
+    point_in_time_period = f"AS_OF_{as_of}"
+    payload["facts"] = [
+        fact
+        for fact in payload["facts"]
+        if fact["field"] not in {"accounting_opinion", "governance_risk_level"}
+        or fact["period"] != point_in_time_period
+    ]
+    provider_shaped = NormalizedCompanyInput.model_validate(payload)
+
+    gate = evaluate_governance_data_quality_gate(provider_shaped, PROFILE)
+
+    messages = {rule.rule_id: rule.message for rule in gate.rules}
+    assert gate.status is GateStatus.SPECIAL_REVIEW
+    for rule_id in (
+        "GOVERNANCE.ACCOUNTING_OPINION",
+        "GOVERNANCE.RISK_LEVEL",
+    ):
+        assert point_in_time_period in messages[rule_id], messages[rule_id]
+
+
+def test_governance_explicit_null_stays_generic_unresolved():
+    """An explicitly registered null stays an explicit-null diagnosis.
+
+    Only the absent-at-``AS_OF_<as_of>`` case names the canonical period; a
+    present but explicitly null fact (``value: null``) keeps the unchanged
+    generic ``unavailable``/``missing`` wording so the two missingness classes
+    stay distinguishable for the operator.
+    """
+
+    normalized_input = load_normalized_input("fixtures/healthy_cash_cow.json")
+    payload = normalized_input.model_dump(mode="json")
+    as_of = normalized_input.as_of.isoformat()
+    point_in_time_period = f"AS_OF_{as_of}"
+    for fact in payload["facts"]:
+        if fact["field"] in {"accounting_opinion", "governance_risk_level"}:
+            if fact["period"] == point_in_time_period:
+                fact["value"] = None
+    provider_shaped = NormalizedCompanyInput.model_validate(payload)
+
+    gate = evaluate_governance_data_quality_gate(provider_shaped, PROFILE)
+
+    messages = {rule.rule_id: rule.message for rule in gate.rules}
+    assert messages["GOVERNANCE.ACCOUNTING_OPINION"] == (
+        "Accounting opinion is unavailable or unresolved."
+    )
+    assert messages["GOVERNANCE.RISK_LEVEL"] == "Governance risk level is missing."

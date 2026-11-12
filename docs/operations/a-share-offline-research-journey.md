@@ -143,6 +143,17 @@ Business Quality 未评估等原因保持 `SPECIAL_REVIEW`——这是预期
   中存在），不能新增一个缺失期间的事实，也不覆盖布尔/枚举字段；
   它不是本场景的机制。
 
+### 治理时点事实同理
+
+`accounting_opinion` 与 `governance_risk_level` 也是只读取逐字符等于
+`AS_OF_<as_of>` 标签的时点事实（Issue #81）。当这两条事实缺失或期间
+标签写错时，`GOVERNANCE.ACCOUNTING_OPINION` / `GOVERNANCE.RISK_LEVEL`
+会以 `... is missing at the analysis point-in-time period AS_OF_<日期>`
+报告缺失——与三条 `UNIVERSE.*` 规则同一形状。补齐方式与上文完全一致：
+按本步骤在 `AS_OF_<as_of>` 期间登记带证据的事实。已登记但显式为
+`null` 的事实保持原有的一般性措辞（`unavailable or unresolved` /
+`is missing`），以区分"根本没有该期间事实"与"显式未知"。
+
 ### 操作步骤
 
 1. 复制 `work/normalized.json` 为 `work/normalized-context.json`。
