@@ -67,6 +67,19 @@ context rules PASS with the prior-day label's evidence while ``as_of`` and
 that evidence stayed fixed); the gates now resolve only the exact
 ``AS_OF_<as_of>`` label, and a payload with no ``AS_OF_`` fact period at
 all still fails closed exactly like before.
+
+Issue #79 audits the standalone normalized-input calculation entrypoints for
+the same class and finds one remaining period-blind boundary: the CDC
+market-cap selection.  ``build_cdc_input_from_facts`` picked
+``current_market_cap``/``listing_equivalent_market_cap`` from ANY period, so
+a stale prior-day or non-AS_OF cap label silently supplied "the" current
+market cap for the CDC yield inside the complete ``run_analyze`` and through
+``run_cdc_from_normalized_input`` — and in a mixed payload the stale
+``current_market_cap`` beat the canonical ``listing_equivalent_market_cap``
+by field order.  The normalized-input CDC projection now resolves market-cap
+facts only at the exact analysis-date label (failing closed as a missing
+yield, like the #77/#78 boundaries), while the intentionally date-agnostic
+standalone builder without an asserted date keeps its documented behavior.
 """
 
 import json
@@ -1208,3 +1221,130 @@ def test_gates_still_fail_closed_without_any_as_of_fact_period(
     stderr = capsys.readouterr().err
     assert "normalized input has no AS_OF fact period" in stderr
     assert not output.exists()
+
+
+# Issue #79: the CDC stage's market-cap selection was the last period-blind
+# point-in-time lookup.  PR #78 made every gate and the net-cash/through-return
+# builders resolve only the exact ``AS_OF_<as_of>`` label, but
+# ``build_cdc_input_from_facts`` picked the ``current_market_cap``/
+# ``listing_equivalent_market_cap`` fact from ANY period, so a stale
+# prior-day (or non-AS_OF) market-cap label silently supplied "the" current
+# market cap: the CDC yield was computed from it, the ``CDC.YIELD`` rule
+# PASSed on the stale evidence inside the COMPLETE ``run_analyze``, and in a
+# mixed payload a stale ``current_market_cap`` even took precedence over a
+# canonical ``listing_equivalent_market_cap`` by field order.  Gate A on
+# pristine post-#78 main reproduced all three directions; the CDC projection
+# from a normalized input now resolves market-cap facts only at the exact
+# analysis-date label, failing closed like the #77/#78 boundaries, while the
+# intentionally date-agnostic standalone ``build_cdc_input_from_facts`` (no
+# asserted analysis date) keeps its documented behavior.
+_CAP_FIELDS = ("current_market_cap", "listing_equivalent_market_cap")
+
+
+def _relabel_market_caps(payload, *, old_period, new_period, fields=_CAP_FIELDS):
+    payload = json.loads(json.dumps(payload))
+    for fact in payload["facts"]:
+        if fact["field"] in fields and fact["period"] == old_period:
+            fact["period"] = new_period
+    return payload
+
+
+def _analyze_payload(tmp_path, payload, name):
+    input_path = tmp_path / f"healthy-{name}.json"
+    input_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    output = tmp_path / f"analysis-{name}.json"
+    assert main(["analyze", "--input", str(input_path), "--output", str(output)]) == 0
+    capsys_output = output.read_text(encoding="utf-8")
+    return json.loads(capsys_output), output, input_path
+
+
+def test_prior_dated_market_cap_label_is_not_current_cdc_context(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    as_of = payload["as_of"]
+    exact_period = f"AS_OF_{as_of}"
+    prior_period = f"AS_OF_{(date.fromisoformat(as_of) - timedelta(days=1)).isoformat()}"
+
+    result, output, input_path = _analyze_payload(
+        tmp_path,
+        _relabel_market_caps(payload, old_period=exact_period, new_period=prior_period),
+        "prior-cap-period",
+    )
+    capsys.readouterr()
+
+    # The CDC yield must not borrow the prior-day market cap: it stays
+    # missing exactly like the other #77/#78 point-in-time lookups.
+    assert result["metrics"]["cdc"]["cdc_yield"] is None
+    cdc_rules = {rule["rule_id"]: rule for rule in result["gates"]["cdc"]["rules"]}
+    yield_rule = cdc_rules["CDC.YIELD"]
+    assert yield_rule["status"] == "SPECIAL_REVIEW", yield_rule
+    assert yield_rule["actual"] is None, yield_rule
+    assert yield_rule["message"] == "CDC yield is unavailable."
+
+    # Every other stage keeps its #78 behavior (fail closed on the stale
+    # label) and the payload stays analyzable, never an auto pass.
+    assert result["decision"]["state"] == "SPECIAL_REVIEW"
+    assert result["decision"]["auto_decision_allowed"] is False
+
+    repeat = tmp_path / "analysis-prior-cap-period-repeat.json"
+    assert main(["analyze", "--input", str(input_path), "--output", str(repeat)]) == 0
+    capsys.readouterr()
+    assert repeat.read_bytes() == output.read_bytes()
+
+
+def test_stale_current_market_cap_never_beats_canonical_listing_cap(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    as_of = payload["as_of"]
+    exact_period = f"AS_OF_{as_of}"
+    prior_period = f"AS_OF_{(date.fromisoformat(as_of) - timedelta(days=1)).isoformat()}"
+
+    # Mixed-period payload: only current_market_cap slides to the prior-day
+    # label with a distinct stale value; the canonical
+    # listing_equivalent_market_cap stays at as_of.  The period-blind
+    # selection preferred the stale current_market_cap by field order, so the
+    # yield was computed from 85/999 ~= 0.085; the exact-label resolution
+    # must instead serve the canonical listing cap (yield 85/650).
+    mixed = _relabel_market_caps(
+        payload,
+        old_period=exact_period,
+        new_period=prior_period,
+        fields=("current_market_cap",),
+    )
+    for fact in mixed["facts"]:
+        if fact["field"] == "current_market_cap":
+            fact["value"] = 999.0
+    result, _output, _input = _analyze_payload(tmp_path, mixed, "mixed-cap-periods")
+    capsys.readouterr()
+    cdc_rules = {rule["rule_id"]: rule for rule in result["gates"]["cdc"]["rules"]}
+    assert result["metrics"]["cdc"]["cdc_yield"] == pytest.approx(85.0 / 650.0)
+    assert cdc_rules["CDC.YIELD"]["actual"] == pytest.approx(85.0 / 650.0)
+    # The canonical listing cap still serves the stages that resolve the
+    # exact label (net cash does not report the market-cap ratio missing).
+    assert "OWNER_NET_CASH_RATIO_UNAVAILABLE" not in result["metrics"]["net_cash"]["flags"]
+
+
+def test_public_cdc_wrapper_ignores_non_as_of_market_cap_label(
+    tmp_path, monkeypatch
+):
+    _deny_network(monkeypatch)
+    from turtle_value_engine.models import NormalizedCompanyInput
+    from turtle_value_engine.pipeline import run_cdc_from_normalized_input
+
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    as_of = payload["as_of"]
+    stale = _relabel_market_caps(
+        payload, old_period=f"AS_OF_{as_of}", new_period="SNAPSHOT_2026-09-07"
+    )
+    normalized = NormalizedCompanyInput.model_validate(stale)
+    result = run_cdc_from_normalized_input(normalized)
+    assert result.cdc_yield is None
+
+    canonical = NormalizedCompanyInput.model_validate(payload)
+    assert run_cdc_from_normalized_input(canonical).cdc_yield is not None
