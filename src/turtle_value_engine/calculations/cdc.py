@@ -221,6 +221,7 @@ def build_cdc_input_from_facts(
     current_market_cap: float | None = None,
     cyclical: bool = False,
     default_confidence: ConfidenceLevel | None = None,
+    as_of_period: str | None = None,
 ) -> CDCInput:
     """Build typed CDC input from the repository's flat Fact layer.
 
@@ -228,6 +229,14 @@ def build_cdc_input_from_facts(
     ``field``/``period`` pair is rejected instead of silently choosing one
     source.  A missing CDC fact is left as ``None`` on the corresponding year,
     so the calculation stage can surface the missing-data flag.
+
+    ``as_of_period`` is the requested point-in-time label for the current
+    market cap.  A caller that asserts an analysis date (the normalized-input
+    projection) must supply the exact ``AS_OF_<as_of>`` label so a stale or
+    noncanonical market-cap period can never stand in for the current market
+    cap: a cap at any other period stays unlooked-up and the yield keeps
+    failing closed as missing.  The standalone call without a date keeps the
+    documented date-agnostic behavior.
     """
 
     facts_by_key: dict[tuple[str, str], Fact] = {}
@@ -279,7 +288,12 @@ def build_cdc_input_from_facts(
         market_cap_facts: list[Fact] = []
         selected_market_cap_field = "current_market_cap"
         for field in ("current_market_cap", "listing_equivalent_market_cap"):
-            candidates = [fact for fact in facts if fact.field == field]
+            candidates = [
+                fact
+                for fact in facts
+                if fact.field == field
+                and (as_of_period is None or fact.period == as_of_period)
+            ]
             if len(candidates) > 1:
                 raise CDCCalculationError(f"{field} must be supplied once, not repeated")
             if candidates:
@@ -309,13 +323,21 @@ def build_cdc_input_from_normalized_input(
     current_market_cap: float | None = None,
     cyclical: bool = False,
 ) -> CDCInput:
-    """Project a normalized CompanyAnalysis input into the CDC fact contract."""
+    """Project a normalized CompanyAnalysis input into the CDC fact contract.
+
+    The market cap is resolved only at the exact ``AS_OF_<as_of>`` label, the
+    same point-in-time contract as the gates and the other stage builders: a
+    market-cap fact at any other period (prior-day, non-AS_OF, or a
+    listing-suffixed label) is not analysis-date context and stays silently
+    unlooked-up so the CDC yield fails closed as missing.
+    """
 
     return build_cdc_input_from_facts(
         normalized_input.facts,
         current_market_cap=current_market_cap,
         cyclical=cyclical,
         default_confidence=normalized_input.data_quality.confidence,
+        as_of_period=f"AS_OF_{normalized_input.as_of.isoformat()}",
     )
 
 
