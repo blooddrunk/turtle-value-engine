@@ -21,7 +21,7 @@ def evaluate_governance_data_quality_gate(
 
     del profile  # The profile is part of the stable gate signature for future rule versions.
     book = FactBook(normalized_input.facts)
-    period = book.as_of_period(normalized_input.as_of)
+    period = book.exact_as_of_period(normalized_input.as_of)
     rules: list[GateRule] = []
 
     for field, rule_id, message in (

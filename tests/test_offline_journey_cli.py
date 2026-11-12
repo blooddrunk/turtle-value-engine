@@ -53,6 +53,20 @@ single-candidate fallback.  Both are mechanically provable future-data
 leakage; the analyze boundary now fails closed on exactly the rule the
 prepare boundary already enforces, while genuinely unknown dates (``null``)
 and earlier hand-prepared point-in-time labels stay preserved.
+
+Issue #77 closes the remaining fallback direction: a single PRIOR-dated
+``AS_OF_`` label (analysis ``as_of=2026-09-12`` but only ``AS_OF_2026-09-11``
+facts) also resolved through the same single-candidate fallback, so a stale
+prior-day context silently satisfied the point-in-time universe and
+governance lookups as if it were the analysis-date context.  The runbook 0C
+contract already documents the opposite: a wrong ``period`` label — any
+other date not later than the analysis date — is silently ignored and the
+universe rules keep reporting missing at ``AS_OF_<as_of>``.  Gate A on
+pristine post-#76 main proved the misleading PASS (all three ``UNIVERSE.*``
+context rules PASS with the prior-day label's evidence while ``as_of`` and
+that evidence stayed fixed); the gates now resolve only the exact
+``AS_OF_<as_of>`` label, and a payload with no ``AS_OF_`` fact period at
+all still fails closed exactly like before.
 """
 
 import json
@@ -1092,4 +1106,105 @@ def test_future_dated_fact_period_label_fails_closed_at_analyze(
     stderr = capsys.readouterr().err
     assert future_period in stderr
     assert f"is after as_of {as_of}" in stderr
+    assert not output.exists()
+
+
+# Issue #77: the single-candidate fallback must not resolve a prior-dated
+# AS_OF_ label as the analysis-date context.  PR #76 closed the future
+# direction; the prior direction silently accepted yesterday's context as
+# current, contradicting the runbook 0C contract (a wrong label, including
+# another date NOT later than the analysis date, is silently ignored and the
+# universe rules keep reporting missing at AS_OF_<as_of>).
+def test_prior_dated_single_as_of_label_is_not_analysis_context(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    # Relabel every point-in-time fact one day BEFORE as_of, keeping as_of
+    # and all evidence fixed.  The temporal-integrity guard correctly stays
+    # silent (a prior date is not provably future leakage — the operator may
+    # hold evidence valid through as_of, which runbook 0C says to register
+    # AT AS_OF_<as_of>), so the point-in-time lookups themselves must not
+    # slide onto the prior-day label through the fallback.
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    as_of = payload["as_of"]
+    exact_period = f"AS_OF_{as_of}"
+    prior_period = f"AS_OF_{(date.fromisoformat(as_of) - timedelta(days=1)).isoformat()}"
+    payload["facts"] = [
+        {**fact, "period": prior_period}
+        if fact["period"] == exact_period
+        else fact
+        for fact in payload["facts"]
+    ]
+    prior_input = tmp_path / "healthy-prior-period.json"
+    prior_input.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+    output = tmp_path / "analysis-prior-period.json"
+    assert main(["analyze", "--input", str(prior_input), "--output", str(output)]) == 0
+    capsys.readouterr()
+    result = json.loads(output.read_text(encoding="utf-8"))
+
+    # The universe context rules keep the runbook 0C fail-closed behavior:
+    # missing at the exact analysis-date period, no stale PASS, no evidence
+    # borrowed from the prior-day label.
+    universe_rules = {
+        rule["rule_id"]: rule for rule in result["gates"]["universe"]["rules"]
+    }
+    assert result["gates"]["universe"]["status"] == "SPECIAL_REVIEW"
+    for rule_id in (
+        "UNIVERSE.LISTING_YEARS",
+        "UNIVERSE.SPECIAL_TREATMENT",
+        "UNIVERSE.PARENT_EQUITY",
+    ):
+        rule = universe_rules[rule_id]
+        assert rule["status"] == "SPECIAL_REVIEW", rule
+        assert rule["actual"] is None, rule
+        assert rule["evidence_ids"] == [], rule
+        assert exact_period in rule["message"], rule
+
+    # The governance gate reads the same analysis-date period, so the
+    # prior-day label cannot satisfy the accounting-opinion/risk lookups
+    # either (absent red-flag disclosures stay PASS by design).
+    governance_rules = {
+        rule["rule_id"]: rule
+        for rule in result["gates"]["governance_data_quality"]["rules"]
+    }
+    assert result["gates"]["governance_data_quality"]["status"] == "SPECIAL_REVIEW"
+    assert (
+        governance_rules["GOVERNANCE.ACCOUNTING_OPINION"]["status"] == "SPECIAL_REVIEW"
+    )
+    assert governance_rules["GOVERNANCE.RISK_LEVEL"]["status"] == "SPECIAL_REVIEW"
+
+    assert result["decision"]["state"] == "SPECIAL_REVIEW"
+    assert result["decision"]["auto_decision_allowed"] is False
+
+    # The stale-acceptance was deterministic; its rejection must be too.
+    repeat = tmp_path / "analysis-prior-period-repeat.json"
+    assert main(["analyze", "--input", str(prior_input), "--output", str(repeat)]) == 0
+    capsys.readouterr()
+    assert repeat.read_bytes() == output.read_bytes()
+
+
+def test_gates_still_fail_closed_without_any_as_of_fact_period(
+    tmp_path, capsys, monkeypatch
+):
+    _deny_network(monkeypatch)
+    # Boundary preservation: a payload with NO AS_OF_ fact period at all
+    # remains structurally unresolvable for the point-in-time gates and the
+    # analyze boundary fails closed on it exactly like before the exact-label
+    # resolution (exit 2, no output file written).
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    payload["facts"] = [
+        fact for fact in payload["facts"] if not fact["period"].startswith("AS_OF_")
+    ]
+    no_asof_input = tmp_path / "healthy-no-asof.json"
+    no_asof_input.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+    output = tmp_path / "analysis-no-asof.json"
+    assert main(["analyze", "--input", str(no_asof_input), "--output", str(output)]) == 2
+    stderr = capsys.readouterr().err
+    assert "normalized input has no AS_OF fact period" in stderr
     assert not output.exists()
