@@ -68,7 +68,13 @@ def evaluate_governance_data_quality_gate(
     opinion_reference = book.get("accounting_opinion", period)
     opinion = enum_value(opinion_reference, field="accounting_opinion")
     opinion_evidence = [] if opinion_reference is None else list(opinion_reference.evidence_ids)
-    if opinion is None or opinion == "UNKNOWN":
+    if opinion_reference is None:
+        opinion_status = GateStatus.SPECIAL_REVIEW
+        opinion_message = (
+            "Accounting opinion is missing at the analysis point-in-time "
+            f"period {period}."
+        )
+    elif opinion is None or opinion == "UNKNOWN":
         opinion_status = GateStatus.SPECIAL_REVIEW
         opinion_message = "Accounting opinion is unavailable or unresolved."
     elif opinion in {"ADVERSE", "DISCLAIMER"}:
@@ -94,7 +100,13 @@ def evaluate_governance_data_quality_gate(
     risk_reference = book.get("governance_risk_level", period)
     risk = enum_value(risk_reference, field="governance_risk_level")
     risk_evidence = [] if risk_reference is None else list(risk_reference.evidence_ids)
-    if risk is None:
+    if risk_reference is None:
+        risk_status = GateStatus.SPECIAL_REVIEW
+        risk_message = (
+            "Governance risk level is missing at the analysis point-in-time "
+            f"period {period}."
+        )
+    elif risk is None:
         risk_status = GateStatus.SPECIAL_REVIEW
         risk_message = "Governance risk level is missing."
     elif risk in {"HIGH", "SEVERE"}:
